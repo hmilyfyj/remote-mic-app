@@ -376,6 +376,7 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
     @Published private(set) var remoteBatteryLevels: [UUID: Int] = [:]
     @Published private(set) var remotePowerStates: [UUID: RemotePowerState] = [:]
     @Published private(set) var audioDevices: [AudioDeviceInfo] = []
+    @Published private(set) var audioInputDevices: [AudioDeviceInfo] = []
     @Published private(set) var testToneStatus = LocalizedMessage("audio.output.none_selected")
     @Published private(set) var isPlayingTestTone = false
     @Published private(set) var isAudioOutputReady = false
@@ -479,6 +480,9 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
         waitForOutput: { [weak self] completion in
             guard let self else { completion(false); return {} }
             return self.audioOutput.waitForOutputAfterInputChange(completion: completion)
+        },
+        restoreWaiting: { [weak self] delay in
+            self?.sourceMicrophoneStatus = LocalizedMessage("audio.source_switch.restore_waiting", arguments: [String(format: "%.1f", delay)])
         },
         log: AppLogger.shared.write,
         finished: { [weak self] reason in self?.finishSourceMicrophoneSession(reason: reason) }
@@ -660,6 +664,7 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
     init(
         settings: AppSettings = AppSettings(),
         initialAudioDevices: [AudioDeviceInfo] = [],
+        initialAudioInputDevices: [AudioDeviceInfo] = [],
         privateFeature: PrivateFeatureIntegration = PrivateFeatureIntegration(),
         macroFeature: MacroFeatureIntegration = MacroFeatureIntegration(),
         membershipFeature: MembershipFeatureIntegration = MembershipFeatureIntegration(),
@@ -679,6 +684,7 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
         self.rc003VoiceExtensionTestEnabled = rc003VoiceExtensionTestEnabled
         self.recordingAssetStore = recordingAssetStore
         audioDevices = initialAudioDevices
+        audioInputDevices = initialAudioInputDevices
         membershipAccessCancellable = membershipFeature.$buttonProfilesAccessDecision
             .removeDuplicates()
             .sink { [weak macroFeature] decision in
@@ -1507,6 +1513,7 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
         AppLogger.shared.write("AUDIO DEVICES refresh_requested id=\(generation)")
         audioPreparationQueue.async { [weak self] in
             let devices = CoreAudioDeviceCatalog.outputDevices()
+            let inputs = CoreAudioDeviceCatalog.inputDevices()
             let diagnostic = Self.audioDevicesDiagnostic(devices)
             DispatchQueue.main.async { [weak self] in
                 guard let self,
@@ -1514,6 +1521,7 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
                       self.audioDeviceRefreshGeneration == generation
                 else { return }
                 self.publishAudioDevices(devices)
+                self.audioInputDevices = inputs
                 AppLogger.shared.write("AUDIO DEVICES refreshed id=\(generation) \(diagnostic)")
             }
         }
@@ -1528,6 +1536,7 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
         audioPreparationQueue.async { [weak self] in
             guard let self else { return }
             let devices = CoreAudioDeviceCatalog.outputDevices()
+            let inputs = CoreAudioDeviceCatalog.inputDevices()
             let devicesDiagnostic = Self.audioDevicesDiagnostic(devices)
             AppLogger.shared.write("AUDIO DEVICES startup id=\(generation) \(devicesDiagnostic)")
             AppLogger.shared.write(
@@ -1550,6 +1559,7 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
                 }
                 self.audioStartupPending = false
                 self.publishAudioDevices(devices)
+                self.audioInputDevices = inputs
                 self.audioStatus = audioStatus
                 self.isAudioOutputReady = isAudioOutputReady
                 self.testToneStatus = testToneStatus
@@ -2317,10 +2327,12 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
                     device: identifier,
                     targetUID: settings.selectedAudioDeviceUID,
                     mode: settings.voiceFnTapModeEnabled ? .tap : .hold,
-                    externalVoiceBusy: sourceMicrophoneFnMonitor.externalVoiceBusy
+                    externalVoiceBusy: sourceMicrophoneFnMonitor.externalVoiceBusy,
+                    restoration: settings.sourceMicrophoneRestoration
                 )
                 if queued {
                     sourceMicrophoneRemoteStopped = false
+                    sourceMicrophoneStatus = LocalizedMessage("audio.source_switch.active")
                 } else {
                     _ = bridge.requestMicrophoneClose()
                     sourceMicrophoneStatus = LocalizedMessage("audio.source_switch.wait")
@@ -2369,7 +2381,8 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
             device: identifier,
             targetUID: settings.selectedAudioDeviceUID,
             mode: settings.voiceFnTapModeEnabled ? .tap : .hold,
-            externalVoiceBusy: sourceMicrophoneFnMonitor.externalVoiceBusy
+            externalVoiceBusy: sourceMicrophoneFnMonitor.externalVoiceBusy,
+            restoration: settings.sourceMicrophoneRestoration
         )
         if !accepted { finishSourceMicrophoneSession(reason: "start_rejected") }
     }

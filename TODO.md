@@ -1,6 +1,7 @@
 # TODO
 
-- [ ] 按语音触发来源切换麦克风，并恢复本次会话原输入
+- [ ] 按语音触发来源切换麦克风，支持恢复原输入或指定设备及可调延迟
+  - 2026-09-06 增加恢复模式、输入设备列表及 0–10 秒延迟设置；默认恢复本次会话开始前的输入、延迟 0 秒。设置按会话保存，设备离线优先回退原输入，手动切换保留新选择，等待期间的新语音提前结束等待。详见 `Testing/SourceMicrophoneSwitching.md` 的恢复设置验收。
   - macOS 本地候选默认关闭，首版限定 RC003、MiRemoteV 2ch 和 Fn 长按/点按；包含设备切换确认、尾音排空、下一段有界缓存、用户换麦保护和异常恢复记录。
   - 会话控制、Fn 来源策略和配置自检已覆盖；`REMOTE_MIC_LOCAL_ONLY=1` 可排除移动端私有依赖，Mac 本地构建与完整 Swift 测试已通过。系统音频、真实 Fn 与第三方文字上屏仍待验收。步骤和兼容性边界见 [`Testing/SourceMicrophoneSwitching.md`](Testing/SourceMicrophoneSwitching.md)。
 

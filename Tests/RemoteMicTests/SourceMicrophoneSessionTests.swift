@@ -38,6 +38,8 @@ private final class MicrophoneHarness {
     var destination: ((Bool) -> Void)?
     var waitForOutput = false
     var outputReady: ((Bool) -> Void)?
+    var restoration = SourceMicrophoneSessionController.Restoration()
+    var restoreWaits: [TimeInterval] = []
 
     lazy var controller = SourceMicrophoneSessionController(environment: .init(
         currentInput: { self.input },
@@ -86,6 +88,7 @@ private final class MicrophoneHarness {
             if !self.waitForOutput { completion(true) }
             return {}
         },
+        restoreWaiting: { self.restoreWaits.append($0) },
         now: { self.now },
         schedule: { delay, action in
             let timer = Timer(deadline: self.now + delay, action: action)
@@ -98,7 +101,7 @@ private final class MicrophoneHarness {
 
     @discardableResult
     func start(mode: SourceMicrophoneSessionController.Mode = .hold, externalBusy: Bool = false) -> Bool {
-        controller.start(device: remote, targetUID: "virtual", mode: mode, externalVoiceBusy: externalBusy)
+        controller.start(device: remote, targetUID: "virtual", mode: mode, externalVoiceBusy: externalBusy, restoration: restoration)
     }
 
     func advance(_ duration: TimeInterval) {
@@ -122,6 +125,141 @@ private final class MicrophoneHarness {
 }
 
 struct SourceMicrophoneSessionTests {
+    @Test func completedLongVoiceReceivesFullRestoreDelay() {
+        let h = MicrophoneHarness()
+        h.restoration = .init(delay: 10)
+        h.start()
+        h.advance(119)
+        h.controller.stop(device: h.remote)
+        h.advance(9)
+        #expect(h.input == "virtual")
+        #expect(h.controller.phase == .cooldown)
+        h.advance(1.1)
+        #expect(h.input == "built_in")
+        #expect(h.results == ["completed"])
+    }
+
+    @Test(arguments: [false, true]) func delayStartsAfterPlaybackAndFinalFnRelease(tap: Bool) {
+        let h = MicrophoneHarness()
+        h.restoration = .init(preferredUID: "usb", delay: 2)
+        h.start(mode: tap ? .tap : .hold)
+        h.advance(0.13)
+        h.controller.receive([1, 2], device: h.remote)
+        h.controller.stop(device: h.remote)
+        h.advance(3)
+        #expect(h.controller.phase == .draining)
+        #expect(h.restoreWaits.isEmpty)
+        h.completePlayback()
+        if tap {
+            #expect(h.controller.phase == .stopping)
+            #expect(h.restoreWaits.isEmpty)
+            h.advance(0.13)
+        }
+        #expect(h.controller.phase == .cooldown)
+        #expect(h.fn == (tap ? [true, false, true, false] : [true, false]))
+        #expect(h.restoreWaits == [2])
+        #expect(h.input == "virtual")
+        h.advance(1.8)
+        #expect(h.input == "virtual")
+        h.advance(0.3)
+        #expect(h.input == "usb")
+        #expect(h.results == ["completed"])
+    }
+
+    @Test(arguments: ["missing", "virtual"]) func unavailableOrVirtualPreferenceFallsBackToOriginal(preferred: String) {
+        let h = MicrophoneHarness()
+        h.restoration = .init(preferredUID: preferred)
+        h.start()
+        h.controller.stop(device: h.remote)
+        #expect(h.input == "built_in")
+        #expect(h.results == ["fallback_restored"])
+    }
+
+    @Test func unavailablePreferenceAndOriginalUseAvailableFallback() {
+        let h = MicrophoneHarness()
+        h.restoration = .init(preferredUID: "missing")
+        h.start()
+        h.inputs = ["usb", "virtual"]
+        h.controller.stop(device: h.remote)
+        #expect(h.input == "usb")
+        #expect(h.results == ["fallback_restored"])
+    }
+
+    @Test func restoreResolvesDeviceAvailabilityAtEndOfDelay() {
+        let h = MicrophoneHarness()
+        h.restoration = .init(preferredUID: "usb", delay: 2)
+        h.start()
+        h.controller.stop(device: h.remote)
+        h.inputs = ["built_in", "virtual"]
+        h.advance(2.1)
+        #expect(h.input == "built_in")
+        #expect(h.results == ["fallback_restored"])
+    }
+
+    @Test func manualSelectionDuringDelayIsPreserved() {
+        let h = MicrophoneHarness()
+        h.restoration = .init(delay: 2)
+        h.start()
+        h.controller.stop(device: h.remote)
+        h.input = "usb"
+        h.controller.inputChanged()
+        h.advance(3)
+        #expect(h.input == "usb")
+        #expect(h.selections == ["virtual"])
+        #expect(h.results == ["input_changed"])
+        #expect(h.recovery == nil)
+    }
+
+    @Test(arguments: [false, true]) func cancellationAndShutdownBypassDelay(shutdown: Bool) {
+        let h = MicrophoneHarness()
+        h.restoration = .init(preferredUID: "usb", delay: 10)
+        h.start()
+        h.controller.stop(device: h.remote)
+        #expect(h.controller.phase == .cooldown)
+        if shutdown { h.controller.shutdown() } else { h.controller.cancel(reason: "sleep") }
+        #expect(h.input == "usb")
+        #expect(h.controller.phase == .idle)
+        h.advance(11)
+        #expect(h.results.count == 1)
+    }
+
+    @Test func nextVoiceEndsDelayAndUsesItsOwnSettingsSnapshot() {
+        let h = MicrophoneHarness()
+        h.restoration = .init(preferredUID: "usb", delay: 10)
+        h.start()
+        h.controller.stop(device: h.remote)
+        h.restoration = .init(delay: 1)
+        #expect(h.start())
+        #expect(h.controller.phase == .active)
+        #expect(h.selections == ["virtual", "usb", "virtual"])
+        h.restoration = .init(preferredUID: "built_in", delay: 9)
+        h.controller.receive([3], device: h.remote)
+        h.controller.stop(device: h.remote)
+        h.completePlayback()
+        h.advance(1.1)
+        #expect(h.input == "usb")
+        #expect(h.restoreWaits == [10, 1])
+        #expect(h.results == ["completed", "completed"])
+        h.advance(11)
+        #expect(h.results.count == 2)
+        #expect(h.audio == [3])
+    }
+
+    @Test func recoveryRecordsRemainCompatibleAndRestoreSpecifiedDeviceImmediately() throws {
+        let old = Data(#"{"previousUID":"built_in","targetUID":"virtual"}"#.utf8)
+        let decoded = try JSONDecoder().decode(SourceMicrophoneSessionController.RecoveryRecord.self, from: old)
+        #expect(decoded.preferredUID == nil)
+        let record = SourceMicrophoneSessionController.RecoveryRecord(previousUID: "built_in", targetUID: "virtual", preferredUID: "usb")
+        #expect(try JSONDecoder().decode(SourceMicrophoneSessionController.RecoveryRecord.self, from: JSONEncoder().encode(record)) == record)
+        let h = MicrophoneHarness()
+        h.input = "virtual"
+        h.recovery = record
+        h.controller.recoverAfterLaunch()
+        #expect(h.input == "usb")
+        #expect(h.restoreWaits.isEmpty)
+        #expect(h.recovery == nil)
+    }
+
     @Test func routeRebindBuffersAudioBeforeFnAndWaitsAfterRestore() {
         let h = MicrophoneHarness()
         h.waitForOutput = true

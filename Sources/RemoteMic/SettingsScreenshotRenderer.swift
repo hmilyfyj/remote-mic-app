@@ -67,6 +67,23 @@ enum SettingsScreenshotRenderer {
         let settings = AppSettings(defaults: defaults)
         settings.applicationLanguage = language
         settings.completeOnboarding()
+        let restorationFixture = ProcessInfo.processInfo.environment[
+            "REMOTE_MIC_SETTINGS_SCREENSHOT_MICROPHONE_RESTORE"
+        ]
+        var inputDevices: [AudioDeviceInfo] = []
+        if let restorationFixture {
+            settings.customMappingEnabled = true
+            settings.sourceMicrophoneSwitchingEnabled = true
+            settings.selectedAudioDeviceUID = "MiRemoteV2ch_UID"
+            settings.sourceMicrophoneRestoreMode = restorationFixture == "previous" ? .previous : .specified
+            settings.sourceMicrophoneRestoreDeviceUID = restorationFixture == "missing" ? "offline" : "usb"
+            settings.setSourceMicrophoneRestoreDelay(2)
+            inputDevices = [
+                .init(id: 1, uid: "built_in", name: "MacBook Pro Microphone"),
+                .init(id: 2, uid: "usb", name: "USB Microphone"),
+                .init(id: 3, uid: "MiRemoteV2ch_UID", name: "MiRemoteV 2ch"),
+            ]
+        }
         if opensShortcutEditor {
             settings.customMappingEnabled = true
             settings.setAction(.customShortcut, for: .ok, trigger: .singleClick)
@@ -76,7 +93,7 @@ enum SettingsScreenshotRenderer {
                 trigger: .singleClick
             )
         }
-        let model = BridgeAppModel(settings: settings)
+        let model = BridgeAppModel(settings: settings, initialAudioInputDevices: inputDevices)
         let updateInformation = UpdateInformationStore()
         let localization = LocalizationStore(settings: settings)
         model.privateFeature.updateLocaleIdentifier(localization.locale.identifier)
@@ -88,7 +105,7 @@ enum SettingsScreenshotRenderer {
         NSApp.appearance = appearance
         defer { NSApp.appearance = previousAppearance }
 
-        for section in sections {
+        for section in restorationFixture == nil ? sections : [.mapping] {
             let rootView = SettingsView(
                 model: model,
                 updateInformation: updateInformation,
@@ -100,6 +117,7 @@ enum SettingsScreenshotRenderer {
                     ? .ok
                     : nil,
                 initialShortcutPickerShowsKeyboard: showsStandardKeyboard,
+                initialMappingShowsVoiceSettings: restorationFixture != nil,
                 minimumContentSize: .zero
             )
             .environmentObject(localization)

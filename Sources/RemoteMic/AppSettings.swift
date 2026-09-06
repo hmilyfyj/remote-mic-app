@@ -373,6 +373,27 @@ final class AppSettings: ObservableObject {
         didSet { defaults.set(sourceMicrophoneSwitchingEnabled, forKey: "sourceMicrophoneSwitchingEnabled") }
     }
 
+    @Published var sourceMicrophoneRestoreMode: SourceMicrophoneRestoreMode {
+        didSet { defaults.set(sourceMicrophoneRestoreMode.rawValue, forKey: "sourceMicrophoneRestoreMode") }
+    }
+    @Published var sourceMicrophoneRestoreDeviceUID: String {
+        didSet { defaults.set(sourceMicrophoneRestoreDeviceUID, forKey: "sourceMicrophoneRestoreDeviceUID") }
+    }
+    @Published private(set) var sourceMicrophoneRestoreDelay: TimeInterval {
+        didSet { defaults.set(sourceMicrophoneRestoreDelay, forKey: "sourceMicrophoneRestoreDelay") }
+    }
+
+    func setSourceMicrophoneRestoreDelay(_ delay: TimeInterval) {
+        sourceMicrophoneRestoreDelay = SourceMicrophoneSessionController.Restoration.clampDelay(delay)
+    }
+
+    var sourceMicrophoneRestoration: SourceMicrophoneSessionController.Restoration {
+        .init(
+            preferredUID: sourceMicrophoneRestoreMode == .specified ? sourceMicrophoneRestoreDeviceUID : nil,
+            delay: sourceMicrophoneRestoreDelay
+        )
+    }
+
     var sourceMicrophoneRecovery: SourceMicrophoneSessionController.RecoveryRecord? {
         get {
             guard let data = defaults.data(forKey: "sourceMicrophoneRecovery") else { return nil }
@@ -606,6 +627,9 @@ final class AppSettings: ObservableObject {
         )
         voiceFnTapModeEnabled = defaults.bool(forKey: Keys.voiceFnTapModeEnabled)
         sourceMicrophoneSwitchingEnabled = defaults.bool(forKey: "sourceMicrophoneSwitchingEnabled")
+        sourceMicrophoneRestoreMode = SourceMicrophoneRestoreMode(rawValue: defaults.string(forKey: "sourceMicrophoneRestoreMode") ?? "") ?? .previous
+        sourceMicrophoneRestoreDeviceUID = defaults.string(forKey: "sourceMicrophoneRestoreDeviceUID") ?? ""
+        sourceMicrophoneRestoreDelay = SourceMicrophoneSessionController.Restoration.clampDelay(defaults.double(forKey: "sourceMicrophoneRestoreDelay"))
         voiceKeyMode = VoiceKeyMode(
             rawValue: defaults.string(forKey: Keys.voiceKeyMode) ?? ""
         ) ?? .function

@@ -1,13 +1,38 @@
 import Foundation
 
+enum SourceMicrophoneRestoreMode: String, CaseIterable {
+    case previous, specified
+}
+
 /// Serialized on the main run loop, including injected callbacks and timers.
 final class SourceMicrophoneSessionController {
     enum Mode { case hold, tap }
-    enum Phase: String { case idle, switching, waiting, starting, active, draining, stopping, restoring }
+    enum Phase: String { case idle, switching, waiting, starting, active, draining, stopping, cooldown, restoring }
+
+    struct Restoration {
+        let preferredUID: String?
+        let delay: TimeInterval
+
+        init(preferredUID: String? = nil, delay: TimeInterval = 0) {
+            self.preferredUID = preferredUID
+            self.delay = Self.clampDelay(delay)
+        }
+
+        static func clampDelay(_ delay: TimeInterval) -> TimeInterval {
+            delay.isFinite ? min(10, max(0, delay)) : 0
+        }
+    }
 
     struct RecoveryRecord: Codable, Equatable {
         let previousUID: String
         let targetUID: String
+        let preferredUID: String?
+
+        init(previousUID: String, targetUID: String, preferredUID: String? = nil) {
+            self.previousUID = previousUID
+            self.targetUID = targetUID
+            self.preferredUID = preferredUID
+        }
     }
 
     struct Playback {
@@ -32,6 +57,7 @@ final class SourceMicrophoneSessionController {
             completion(true)
             return {}
         }
+        var restoreWaiting: (TimeInterval) -> Void = { _ in }
         var now: () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }
         var schedule: (TimeInterval, @escaping () -> Void) -> (() -> Void) = { delay, operation in
             let item = DispatchWorkItem(block: operation)
@@ -49,6 +75,7 @@ final class SourceMicrophoneSessionController {
     private var mode: Mode = .hold
     private var record: RecoveryRecord?
     private var restoreUID: String?
+    private var restoreDelay: TimeInterval = 0
     private var restoreAllowed = true
     private var remoteEnded = false
     private var fnDown = false
@@ -68,6 +95,7 @@ final class SourceMicrophoneSessionController {
         let device: UUID
         let targetUID: String
         let mode: Mode
+        let restoration: Restoration
         var samples: [Int16] = []
         var ended = false
     }
@@ -81,11 +109,15 @@ final class SourceMicrophoneSessionController {
     func owns(_ device: UUID) -> Bool { owner == device && isBusy }
 
     @discardableResult
-    func start(device: UUID, targetUID: String, mode: Mode, externalVoiceBusy: Bool) -> Bool {
+    func start(device: UUID, targetUID: String, mode: Mode, externalVoiceBusy: Bool, restoration: Restoration = .init()) -> Bool {
         if isBusy, owner == device, remoteEnded, pendingSession == nil,
            finalReason == "completed", !externalVoiceBusy {
-            pendingSession = PendingSession(device: device, targetUID: targetUID, mode: mode)
+            pendingSession = PendingSession(device: device, targetUID: targetUID, mode: mode, restoration: restoration)
             log("phase=queued source=remote reason=previous_session_finishing")
+            if phase == .cooldown {
+                log("phase=restore_wait_ended reason=next_voice")
+                beginRestore()
+            }
             return true
         }
         guard !isBusy, !fnDown, !toolStateUncertain, !externalVoiceBusy else {
@@ -106,7 +138,8 @@ final class SourceMicrophoneSessionController {
         generation += 1
         owner = device
         self.mode = mode
-        record = RecoveryRecord(previousUID: previousUID, targetUID: targetUID)
+        record = RecoveryRecord(previousUID: previousUID, targetUID: targetUID, preferredUID: restoration.preferredUID)
+        restoreDelay = restoration.delay
         restoreAllowed = true
         remoteEnded = false
         toolStarted = false
@@ -118,7 +151,7 @@ final class SourceMicrophoneSessionController {
         deadline = startedAt + 1
         finalReason = "completed"
         phase = .switching
-        log("phase=requested source=remote mode=\(mode == .tap ? "tap" : "hold")")
+        log("phase=requested source=remote mode=\(mode == .tap ? "tap" : "hold") restore_mode=\(restoration.preferredUID == nil ? "previous" : "specified") restore_delay_ms=\(Int(restoreDelay * 1000))")
         guard environment.writeRecovery(record) else {
             finalReason = "recovery_write_failed"
             finish()
@@ -398,12 +431,25 @@ final class SourceMicrophoneSessionController {
                     controller.fnDown = !controller.environment.setFn(false)
                 }
                 controller.toolStarted = false
-                controller.beginRestore()
+                controller.restoreAfterDelay()
             }
         } else {
             toolStarted = false
-            beginRestore()
+            restoreAfterDelay()
         }
+    }
+
+    private func restoreAfterDelay() {
+        guard finalReason == "completed", restoreDelay > 0, pendingSession == nil else {
+            beginRestore()
+            return
+        }
+        // Voice has finished; its watchdog must not shorten the restoration delay.
+        cancelTasks()
+        phase = .cooldown
+        log("phase=restore_wait delay_ms=\(Int(restoreDelay * 1000))")
+        environment.restoreWaiting(restoreDelay)
+        later(after: restoreDelay) { $0.beginRestore() }
     }
 
     private func beginRestore() {
@@ -426,7 +472,7 @@ final class SourceMicrophoneSessionController {
         }
         restoreUID = target
         deadline = environment.now() + 1
-        if target != record.previousUID { log("phase=restoring reason=original_unavailable fallback=true") }
+        if target != (record.preferredUID ?? record.previousUID) { log("phase=restoring reason=preferred_unavailable fallback=true") }
         guard environment.selectInput(target) else {
             finalReason = "restore_failed"
             finish()
@@ -440,8 +486,9 @@ final class SourceMicrophoneSessionController {
         let current = environment.currentInput()
         if current == restoreUID {
             _ = environment.writeRecovery(nil)
-            log("phase=restored fallback=\(restoreUID != record.previousUID)")
-            if restoreUID != record.previousUID, finalReason == "completed" { finalReason = "fallback_restored" }
+            let fallback = restoreUID != (record.preferredUID ?? record.previousUID)
+            log("phase=restored fallback=\(fallback)")
+            if fallback, finalReason == "completed" { finalReason = "fallback_restored" }
             let operation = generation
             let cancelWait = environment.waitForOutput { [weak self] ready in
                 guard let self, self.generation == operation, self.phase == .restoring else { return }
@@ -463,7 +510,10 @@ final class SourceMicrophoneSessionController {
     }
 
     private func restorationTarget(_ record: RecoveryRecord) -> String? {
-        environment.availableInputs().contains(record.previousUID)
+        let available = environment.availableInputs()
+        if let preferredUID = record.preferredUID, preferredUID != record.targetUID,
+           available.contains(preferredUID) { return preferredUID }
+        return available.contains(record.previousUID)
             ? record.previousUID : environment.fallbackInput(record.targetUID)
     }
 
@@ -483,7 +533,7 @@ final class SourceMicrophoneSessionController {
         environment.finished(finalReason)
         if let pendingSession {
             self.pendingSession = nil
-            if start(device: pendingSession.device, targetUID: pendingSession.targetUID, mode: pendingSession.mode, externalVoiceBusy: false) {
+            if start(device: pendingSession.device, targetUID: pendingSession.targetUID, mode: pendingSession.mode, externalVoiceBusy: false, restoration: pendingSession.restoration) {
                 if isBusy {
                     receive(pendingSession.samples, device: pendingSession.device)
                     if pendingSession.ended { stop(device: pendingSession.device) }
