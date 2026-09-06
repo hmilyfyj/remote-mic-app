@@ -2,7 +2,7 @@
 
 - [ ] 按语音触发来源切换麦克风，并恢复本次会话原输入
   - macOS 本地候选默认关闭，首版限定 RC003、MiRemoteV 2ch 和 Fn 长按/点按；包含设备切换确认、尾音排空、下一段有界缓存、用户换麦保护和异常恢复记录。
-  - 会话控制、Fn 来源策略和配置自检已覆盖；完整 App 构建受固定私有依赖访问限制，系统音频、真实 Fn 与第三方文字上屏仍待验收。步骤和兼容性边界见 [`Testing/SourceMicrophoneSwitching.md`](Testing/SourceMicrophoneSwitching.md)。
+  - 会话控制、Fn 来源策略和配置自检已覆盖；`REMOTE_MIC_LOCAL_ONLY=1` 可排除移动端私有依赖，Mac 本地构建与完整 Swift 测试已通过。系统音频、真实 Fn 与第三方文字上屏仍待验收。步骤和兼容性边界见 [`Testing/SourceMicrophoneSwitching.md`](Testing/SourceMicrophoneSwitching.md)。
 
 - [x] 统一 SayAll 品牌、官网与当前上架战略
   - App 英文名称统一为 `SayAll`，中文名称继续使用“无线麦”，官网统一为 `https://sayall.app`。

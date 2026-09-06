@@ -242,7 +242,7 @@
 "audio.source_switch.wait" = "正在结束当前语音，请稍后再试。";
 "audio.source_switch.permission" = "请授权辅助功能与输入监控，并连接遥控器。";
 "audio.source_switch.permission_or_busy" = "请先结束键盘语音，并检查辅助功能、输入监控和遥控器连接。";
-"audio.source_switch.unsupported" = "当前组合尚未支持此实验功能，请选择 MiRemoteV 2ch 并使用小米 RC003 遥控器。";
+"audio.source_switch.unsupported" = "当前组合尚未支持此实验功能，请选择 MiRemoteV 2ch 并使用支持的小米蓝牙遥控器。";
 "audio.source_switch.audio_unavailable" = "虚拟麦克风尚未就绪，请检查声音设置。";
 "connection.voice_fn_tap.hint" = "适配点按式语音输入（如 Typeless）：按下语音键注入一次 Fn 开始，松开再注入一次结束，音频在按住期间照常传输。需要辅助功能权限；开启后语音键不再直接发 Fn。";
 "connection.voice_fn_tap.hint_short" = "用于需要点按 Fn 开始和结束的语音工具；遥控器仍需按住说话。";
@@ -594,6 +594,7 @@
 "onboarding.welcome.detail" = "我们会一起选择控制方式，完成权限、语音输出设备和真实语音检查，让你第一次使用时就知道每一部分都在正常工作。";
 "onboarding.welcome.feature.voice" = "按住语音键，直接在常用工具里说话输入";
 "onboarding.welcome.feature.controls" = "用遥控器、iPhone 或网页控制方向、音量和常用操作";
+"onboarding.welcome.feature.local_controls" = "用遥控器控制方向、音量和常用操作";
 "onboarding.welcome.feature.verify" = "每项设置都现场检查，出问题时直接告诉你原因";
 "onboarding.voice_tool.title" = "你准备在哪个工具里说话？";
 "onboarding.voice_tool.detail" = "选择常用工具，我们会为它准备合适的语音键方式。以后仍可在设置中修改。";
@@ -637,6 +638,7 @@
 "onboarding.voice_tool.system_fn.open_settings" = "打开键盘设置";
 "onboarding.remote_availability.title" = "你现在有实体遥控器吗？";
 "onboarding.remote_availability.detail" = "实体遥控器可以获得完整、稳定的无线麦体验。如果当前没有，也可以继续使用手机。";
+"onboarding.remote_availability.local_detail" = "请准备好小米蓝牙遥控器，并开启 Mac 的蓝牙。";
 "onboarding.remote_availability.has_remote.title" = "有遥控器";
 "onboarding.remote_availability.has_remote.detail" = "连接小米蓝牙遥控器，使用实体按键和遥控器麦克风。";
 "onboarding.remote_availability.no_remote.title" = "当前没有遥控器";
@@ -851,6 +853,7 @@
 "onboarding.recovery.permission.accessibility_denied.action" = "允许执行操作";
 "onboarding.recovery.remote.not_found.title" = "所选控制方式还没有连接";
 "onboarding.recovery.remote.not_found.detail" = "按照当前页面重新连接实体遥控器、iPhone 或网页版。";
+"onboarding.recovery.remote.not_found.local_detail" = "按照当前页面重新连接实体遥控器。";
 "onboarding.recovery.remote.not_found.action" = "重新连接";
 "onboarding.recovery.remote.button_not_ready.title" = "还没有收到控制按键";
 "onboarding.recovery.remote.button_not_ready.detail" = "重新建立连接，然后按当前控制界面上的任意普通按键。";

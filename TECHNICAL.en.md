@@ -129,6 +129,21 @@ On macOS 26, the settings window uses native `glassEffect`, glass button styles,
 
 ## Build and test
 
+For physical remotes on a Mac, set `REMOTE_MIC_LOCAL_ONLY=1` when building or
+testing. This excludes the private `sayall-mac-remote` package and the iPhone,
+Apple Watch and Web connection services and UI. Bluetooth/HID, virtual audio
+and keyboard actions remain available; onboarding offers the physical remote path.
+
+```bash
+REMOTE_MIC_LOCAL_ONLY=1 xcrun swift build
+REMOTE_MIC_LOCAL_ONLY=1 xcrun swift test
+REMOTE_MIC_LOCAL_ONLY=1 ./scripts/test.sh
+```
+
+This is a build option; the app does not need the variable at runtime. With the
+variable unset, the full build retains its existing dependencies and features.
+Distributable apps still require the project's signing and notarization workflow.
+
 Development verification:
 
     ./scripts/test.sh

@@ -5,8 +5,10 @@
 - 分支：`feature/448-source-microphone`，基础提交：`3935c058b95e028bbda2f582256a1df7a1ee6eae`。
 - 状态：本地实现候选。功能默认关闭，代码保留本地；本次交付包含源码补丁和本手册。
 - 自动化环境：macOS 26.3.1 (a)，Build 25D771280a，Apple Silicon，Swift 6.3，Swift 5 语言模式。
-- 完整 App 构建受阻：固定依赖 `GetSayAll/sayall-mac-remote` 的提交 `7d1b3c2e1d88913bafaa3a401c939eb218a1f363` 当前返回 `Repository not found`。需要该依赖的读取权限或对应源码后继续构建。
-- 可安装测试包尚未生成。设置页实际窗口、真实 RC003、MiRemoteV、内置/USB 麦克风和第三方语音工具尚未实测，工具版本待记录。
+- Mac 本地构建：`REMOTE_MIC_LOCAL_ONLY=1` 排除手机、手表、Web 连接和私有依赖；完整 Swift 构建、520 项测试和 51 项自检通过。完整移动端版本仍需私有依赖授权。
+- 已生成仅供本机界面检查的 ad-hoc App。可分发签名、公证包尚未生成；真实 RC003、MiRemoteV、内置/USB 麦克风和第三方语音工具尚未实测，工具版本待记录。
+- Release App 构建与 `scripts/verify-app.sh` 默认结构校验通过，Developer ID 和公证校验未执行。最终文案变更后，82 项受影响测试复核通过。
+- 已检查生产首次引导实体路径浅色/深色共 18 张截图，以及设置页 800 x 650 压力渲染。实际鼠标导航、权限授权、录音和第三方文字上屏仍待现场验证。
 
 ## 候选行为与边界
 
@@ -21,7 +23,7 @@
 
 ## 测试前准备
 
-1. 先在具备私有依赖读取权限的环境执行完整 `swift test`、`swift build` 和项目自检。按项目签名、公证流程生成可安装包，记录完整源码 SHA、App 版本、Build、系统和工具版本。
+1. 在 Mac 本地模式下，以 `REMOTE_MIC_LOCAL_ONLY=1` 执行完整 `swift test`、`swift build` 和项目自检。按项目签名、公证流程生成可安装包，记录完整源码 SHA、App 版本、Build、系统和工具版本。
 2. 准备持续连接的 RC003、MiRemoteV 2ch、内置麦克风和 USB 麦克风。授予辅助功能和输入监控权限，使用真实前台输入框。
 3. 在目标工具的用户可见设置中选择“系统默认输入”。先手动切换系统默认输入并分别开始录音，确认工具每次采用新设备；固定绑定设备或持续持有旧设备的工具记录为待适配。
 4. 确认语音工具已停止录音。按住 Fn 工具使用长按模式；点按 Fn 工具开启“语音键模拟 Fn 点按”。开始每组测试前核对系统默认输入为原设备 A。
@@ -51,7 +53,7 @@
 ## 稳定功能与界面回归
 
 - 配置键缺失、明确关闭、开启、使用后关闭四种状态，分别回放 RC003 无主动 `MIC_OPEN` 的 `STREAM_START → AUDIO → STREAM_STOP`，检查普通按键及原 Fn 长按/点按路径。
-- 恢复默认映射、导入/导出配置、重新连接、权限恢复，以及手机和 Apple Remote 独立语音路径均需回归。实验开关关闭时核对基础版本行为。
+- 恢复默认映射、导入/导出配置、重新连接、权限恢复，以及 Apple Remote 独立语音路径均需回归。实验开关关闭时核对基础版本行为。Mac 本地模式的手机、Web 与手表路径不适用，M07 使用第二只实体遥控器执行。
 - 在实际设置窗口逐一点击全部受影响入口，检查中英文、浅色/深色、开关与状态提示和页面滚动。另做 `800 × 650` 压力检查；生产窗口最低尺寸若更大，分别记录实际交互与压力渲染结果。
 - 首版能力差异：RC003/Fn/MiRemoteV 为 macOS 候选；其他遥控器型号、Command、其他虚拟设备的自动切麦显示尚未支持；Windows 自动切麦本轮未实现。现有普通按键能力沿用原实现，触摸属于 RC003 物理不存在的能力。两个平台各自按硬件合同验收。
 
@@ -61,9 +63,9 @@
 
 ```sh
 zsh scripts/test-source-microphone.sh
-SKIP_SWIFT_PACKAGE_BUILD=1 zsh scripts/test.sh
-swift test
-swift build
+REMOTE_MIC_LOCAL_ONLY=1 zsh scripts/test.sh
+REMOTE_MIC_LOCAL_ONLY=1 swift test
+REMOTE_MIC_LOCAL_ONLY=1 swift build
 plutil -lint Resources/en.lproj/Localizable.strings Resources/zh-Hans.lproj/Localizable.strings
 git diff --check
 ```

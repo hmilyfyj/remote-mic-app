@@ -2,8 +2,10 @@ import AppKit
 import Charts
 import Combine
 import CoreBluetooth
+#if !REMOTE_MIC_LOCAL_ONLY
 import SayAllMacRemoteCore
 import SayAllMacRemoteUI
+#endif
 #if canImport(SayAllSiriRemote)
 import SayAllSiriRemote
 #endif
@@ -55,7 +57,9 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     }
 }
 
+#if !REMOTE_MIC_LOCAL_ONLY
 extension BridgeAppModel: WebRemoteSessionModel {}
+#endif
 
 private enum PermissionVisualState {
     case granted
@@ -316,6 +320,7 @@ struct SettingsView: View {
                 selectedSection = .about
             }
         }
+        #if !REMOTE_MIC_LOCAL_ONLY
         .sheet(isPresented: $isWebRemoteSessionPresented) {
             webRemoteSessionView
         }
@@ -348,6 +353,7 @@ struct SettingsView: View {
         } message: {
             Text("connection.web.invite.invalid_message")
         }
+        #endif
         .alert(
             localization.text("button_mapping.permission_prompt.title"),
             isPresented: $isMappingPermissionAlertPresented
@@ -366,6 +372,7 @@ struct SettingsView: View {
         }
     }
 
+    #if !REMOTE_MIC_LOCAL_ONLY
     private var webRemoteInviteSheet: some View {
         VStack(alignment: .leading, spacing: 20) {
             VStack(alignment: .leading, spacing: 16) {
@@ -464,6 +471,8 @@ struct SettingsView: View {
             )
         )
     }
+
+    #endif
 
     private var sidebar: some View {
         VStack(spacing: 0) {
@@ -643,7 +652,9 @@ struct SettingsView: View {
                     VStack(spacing: 14) {
                         audioSettingsPanel
                         audioCompatibilityPanel
+                        #if !REMOTE_MIC_LOCAL_ONLY
                         phoneConnectionsPanel
+                        #endif
                     }
                     .frame(maxWidth: .infinity, alignment: .topLeading)
                 }
@@ -651,6 +662,7 @@ struct SettingsView: View {
         }
     }
 
+    #if !REMOTE_MIC_LOCAL_ONLY
     private var phoneConnectionsPanel: some View {
         GlassPanel {
             VStack(alignment: .leading, spacing: 14) {
@@ -831,6 +843,8 @@ struct SettingsView: View {
             }
         }
     }
+
+    #endif
 
     private var connectionDevicePanel: some View {
         GlassPanel {
@@ -3442,6 +3456,7 @@ struct SettingsView: View {
         localization.text(model.isConnected ? "common.status.connected" : "common.status.connecting")
     }
 
+    #if !REMOTE_MIC_LOCAL_ONLY
     private var webRemoteStatusText: String {
         switch model.webRemoteState {
         case .disabled:
@@ -3519,6 +3534,8 @@ struct SettingsView: View {
         guard model.webRemoteState.isEnabled else { return }
         isWebRemoteSessionPresented = true
     }
+
+    #endif
 
     private var connectionTint: Color {
         model.isConnected ? .green : .orange

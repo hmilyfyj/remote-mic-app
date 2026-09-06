@@ -3,7 +3,9 @@ import Combine
 import CoreBluetooth
 import CoreImage
 import CoreImage.CIFilterBuiltins
+#if !REMOTE_MIC_LOCAL_ONLY
 import SayAllMacRemoteCore
+#endif
 import SwiftUI
 
 private struct OnboardingInputMethodGuideStep: Identifiable {
@@ -99,6 +101,7 @@ struct OnboardingView: View {
         .environment(\.locale, localization.locale)
         .frame(minWidth: 980, minHeight: 732)
         .onAppear {
+            settings.prepareAvailableOnboardingSources()
             enforceOnboardingVoiceKeyPolicy()
             refreshPermissionStates()
             refreshVoiceToolAvailability()
@@ -361,7 +364,11 @@ struct OnboardingView: View {
 
             VStack(alignment: .leading, spacing: 12) {
                 featureLine("waveform", "onboarding.welcome.feature.voice")
+                #if REMOTE_MIC_LOCAL_ONLY
+                featureLine("rectangle.and.hand.point.up.left", "onboarding.welcome.feature.local_controls")
+                #else
                 featureLine("rectangle.and.hand.point.up.left", "onboarding.welcome.feature.controls")
+                #endif
                 featureLine("checkmark.shield", "onboarding.welcome.feature.verify")
             }
             .padding(.top, 10)
@@ -567,16 +574,13 @@ struct OnboardingView: View {
     private var remoteAvailabilityContent: some View {
         VStack(alignment: .leading, spacing: 18) {
             onboardingTitle("onboarding.remote_availability.title")
-            Text("onboarding.remote_availability.detail")
+            Text(localization.text(OnboardingRemoteAvailability.selectionDetailKey))
                 .font(.system(size: 14))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
             VStack(spacing: 12) {
-                ForEach([
-                    OnboardingRemoteAvailability.hasRemote,
-                    .noRemote,
-                ]) { availability in
+                ForEach(OnboardingRemoteAvailability.availableChoices) { availability in
                     Button {
                         selectRemoteAvailability(availability)
                     } label: {
@@ -644,6 +648,9 @@ struct OnboardingView: View {
     }
 
     private var controlMethodContent: some View {
+        #if REMOTE_MIC_LOCAL_ONLY
+        remoteAvailabilityContent
+        #else
         VStack(alignment: .leading, spacing: 18) {
             onboardingTitle("onboarding.control_method.title")
             Text("onboarding.control_method.detail")
@@ -727,6 +734,7 @@ struct OnboardingView: View {
                 }
             }
         }
+        #endif
     }
 
     private func inputMethodGuide(for tool: OnboardingVoiceTool) -> some View {
@@ -952,9 +960,17 @@ struct OnboardingView: View {
         case .physicalRemote:
             physicalRemoteContent
         case .iPhoneApp:
+            #if !REMOTE_MIC_LOCAL_ONLY
             iPhoneRemoteContent
+            #else
+            remoteAvailabilityContent
+            #endif
         case .webRemote:
+            #if !REMOTE_MIC_LOCAL_ONLY
             webRemoteContent
+            #else
+            remoteAvailabilityContent
+            #endif
         case .unselected:
             remoteAvailabilityContent
         }
@@ -1033,6 +1049,7 @@ struct OnboardingView: View {
         }
     }
 
+    #if !REMOTE_MIC_LOCAL_ONLY
     private var iPhoneRemoteContent: some View {
         VStack(alignment: .leading, spacing: 18) {
             onboardingTitle("onboarding.iphone_remote.title")
@@ -1094,6 +1111,8 @@ struct OnboardingView: View {
             }
         }
     }
+
+    #endif
 
     private func controllerButtonStatusCard(waitingDetailKey: String) -> some View {
         statusCard(
@@ -1445,7 +1464,7 @@ struct OnboardingView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(localization.text("onboarding.recovery.\(failure.rawValue).title"))
                         .font(.system(size: 14, weight: .semibold))
-                    Text(localization.text("onboarding.recovery.\(failure.rawValue).detail"))
+                    Text(localization.text(recoveryDetailKey(for: failure)))
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -1473,6 +1492,13 @@ struct OnboardingView: View {
             RoundedRectangle(cornerRadius: 12)
                 .stroke(Color.orange.opacity(0.25), lineWidth: 1)
         }
+    }
+
+    private func recoveryDetailKey(for failure: FirstUseFailureReason) -> String {
+        #if REMOTE_MIC_LOCAL_ONLY
+        if failure == .remoteNotFound { return "onboarding.recovery.remote.not_found.local_detail" }
+        #endif
+        return "onboarding.recovery.\(failure.rawValue).detail"
     }
 
     private var rightPane: some View {
@@ -1575,12 +1601,21 @@ struct OnboardingView: View {
         case .physicalRemote, .unselected:
             remoteIllustration
         case .iPhoneApp:
+            #if !REMOTE_MIC_LOCAL_ONLY
             iPhoneRemoteIllustration
+            #else
+            remoteAvailabilityIllustration
+            #endif
         case .webRemote:
+            #if !REMOTE_MIC_LOCAL_ONLY
             webRemoteIllustration
+            #else
+            remoteAvailabilityIllustration
+            #endif
         }
     }
 
+    #if !REMOTE_MIC_LOCAL_ONLY
     private var iPhoneRemoteIllustration: some View {
         VStack(spacing: 18) {
             if !model.isPhoneRemoteConnected,
@@ -1656,6 +1691,8 @@ struct OnboardingView: View {
         }
         .padding(28)
     }
+
+    #endif
 
     private var completeIllustration: some View {
         VStack(spacing: 22) {
@@ -2028,10 +2065,13 @@ struct OnboardingView: View {
     }
 
     private var webRemoteConnected: Bool {
+        #if !REMOTE_MIC_LOCAL_ONLY
         if case .connected = model.webRemoteState { return true }
+        #endif
         return false
     }
 
+    #if !REMOTE_MIC_LOCAL_ONLY
     private var webRemoteConnectionTitle: String {
         switch model.webRemoteState {
         case .connected:
@@ -2046,6 +2086,8 @@ struct OnboardingView: View {
             return localization.text("onboarding.web_remote.waiting")
         }
     }
+
+    #endif
 
     private var selectedControlConnectedKey: String {
         switch settings.onboardingControlMethod {
@@ -2820,9 +2862,13 @@ struct OnboardingView: View {
         case .iPhoneApp:
             model.enablePhoneRemoteConnection()
         case .webRemote:
+            #if !REMOTE_MIC_LOCAL_ONLY
             if !model.webRemoteState.isEnabled {
                 model.enableWebRemoteConnection()
             }
+            #else
+            break
+            #endif
         case .unselected:
             break
         }

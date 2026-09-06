@@ -1,6 +1,7 @@
 import AppKit
 import CoreImage
 import CoreImage.CIFilterBuiltins
+#if !REMOTE_MIC_LOCAL_ONLY
 import SayAllMacRemoteCore
 import SwiftUI
 
@@ -54,3 +55,4 @@ struct PhoneRemoteInvitationCard: View {
         }
     }
 }
+#endif

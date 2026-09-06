@@ -242,7 +242,7 @@
 "audio.source_switch.wait" = "Finishing the current voice session. Try again shortly.";
 "audio.source_switch.permission" = "Grant Accessibility and Input Monitoring access, and connect the remote.";
 "audio.source_switch.permission_or_busy" = "Finish keyboard voice, then check Accessibility, Input Monitoring, and the remote connection.";
-"audio.source_switch.unsupported" = "This experimental mode currently requires MiRemoteV 2ch and a Xiaomi RC003 remote.";
+"audio.source_switch.unsupported" = "This experimental mode currently requires MiRemoteV 2ch and a supported Xiaomi Bluetooth remote.";
 "audio.source_switch.audio_unavailable" = "The virtual microphone is unavailable. Check sound settings.";
 "connection.voice_fn_tap.hint" = "For tap-to-toggle voice apps (e.g. Typeless): pressing the voice key injects one Fn tap to start, releasing injects another to stop, while audio streams as usual. Requires Accessibility permission; the voice key no longer emits Fn directly.";
 "connection.voice_fn_tap.hint_short" = "For voice tools that use Fn taps to start and stop. Keep holding the remote button while speaking.";
@@ -594,6 +594,7 @@
 "onboarding.welcome.detail" = "We’ll choose a control method, set up permissions and voice output, and run a real voice check so every part works on first use.";
 "onboarding.welcome.feature.voice" = "Hold the voice key and dictate in the tools you already use";
 "onboarding.welcome.feature.controls" = "Use a remote, iPhone, or the web for navigation, volume, and everyday actions";
+"onboarding.welcome.feature.local_controls" = "Use your remote for navigation, volume, and everyday actions";
 "onboarding.welcome.feature.verify" = "Verify each setting live and see exactly what needs attention";
 "onboarding.voice_tool.title" = "Where do you want to dictate?";
 "onboarding.voice_tool.detail" = "Choose your usual tool and we’ll prepare the right voice-key behavior. You can change it later in Settings.";
@@ -637,6 +638,7 @@
 "onboarding.voice_tool.system_fn.open_settings" = "Open Keyboard Settings";
 "onboarding.remote_availability.title" = "Do you have a physical remote right now?";
 "onboarding.remote_availability.detail" = "A physical remote provides the most complete and reliable SayAll experience. You can continue with a phone if one is not available.";
+"onboarding.remote_availability.local_detail" = "Have your Xiaomi Bluetooth remote ready and turn on Bluetooth on your Mac.";
 "onboarding.remote_availability.has_remote.title" = "I Have a Remote";
 "onboarding.remote_availability.has_remote.detail" = "Connect a Xiaomi Bluetooth remote and use its physical buttons and microphone.";
 "onboarding.remote_availability.no_remote.title" = "No Remote Right Now";
@@ -851,6 +853,7 @@
 "onboarding.recovery.permission.accessibility_denied.action" = "Allow Actions";
 "onboarding.recovery.remote.not_found.title" = "The selected control method is not connected yet";
 "onboarding.recovery.remote.not_found.detail" = "Follow the current page to reconnect the physical remote, iPhone, or web remote.";
+"onboarding.recovery.remote.not_found.local_detail" = "Follow the current page to reconnect your physical remote.";
 "onboarding.recovery.remote.not_found.action" = "Reconnect";
 "onboarding.recovery.remote.button_not_ready.title" = "No control button has arrived yet";
 "onboarding.recovery.remote.button_not_ready.detail" = "Reconnect, then press any normal button in the current control interface.";

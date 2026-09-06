@@ -772,6 +772,19 @@ final class AppSettings: ObservableObject {
         onboardingControlMethod = controlMethod
     }
 
+    func prepareAvailableOnboardingSources() {
+        #if REMOTE_MIC_LOCAL_ONLY
+        guard !isOnboardingComplete else { return }
+        if onboardingControlMethod == .iPhoneApp || onboardingControlMethod == .webRemote ||
+            onboardingRemoteAvailability == .noRemote || onboardingStep == .controlMethod {
+            onboardingControlMethod = .unselected
+            onboardingRemoteAvailability = .unselected
+            onboardingStep = .remoteAvailability
+            AppLogger.shared.write("ONBOARDING SOURCE reset reason=local_only_build")
+        }
+        #endif
+    }
+
     func setOnboardingRemoteAvailability(_ availability: OnboardingRemoteAvailability) {
         guard onboardingRemoteAvailability != availability else { return }
         onboardingRemoteAvailability = availability
