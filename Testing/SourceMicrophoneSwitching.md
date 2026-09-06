@@ -7,6 +7,18 @@
 - 自动化环境：macOS 26.3.1 (a)，Build 25D771280a，Apple Silicon，Swift 6.3，Swift 5 语言模式。
 - Mac 本地构建：`REMOTE_MIC_LOCAL_ONLY=1` 排除手机、手表、Web 连接和私有依赖；完整 Swift 构建、520 项测试和 51 项自检通过。完整移动端版本仍需私有依赖授权。
 - 已生成仅供本机界面检查的 ad-hoc App。可分发签名、公证包尚未生成；真实 RC003、MiRemoteV、内置/USB 麦克风和第三方语音工具尚未实测，工具版本待记录。
+
+2026-09-06 唤醒失败回归：用户实测开启后会话被 `audio_interrupted` 提前取消。本机 macOS 26.3.1 (a) / 25D771280a 已复现默认输入切换使 AVAudioEngine 丢失虚拟输出绑定。已增加切换后的输出恢复：在无待播放音频时复用引擎、重置播放器，等待输出绑定连续稳定 150 ms 后提交 Fn；上限为 1 s，期间保留首段 PCM。恢复原输入后同样确认输出就绪。该等待会增加唤醒延迟，真实首字和第三方识别仍需复测。
+
+本机真实 Core Audio 集成测试已通过 10 轮往返（20 次输入切换），每次检查 MiRemoteV 2ch 绑定、静音样本实际播放完成、队列排空和零中断；测试结束恢复原系统输入。该结果覆盖本机原输入设备，内置/USB 与实际 RC003 发声、目标工具唤醒和文字结果仍需按 M01-M15 验收。
+
+专用实机测试会临时改变系统输入，先退出无线麦，执行：
+
+```bash
+REMOTE_MIC_LOCAL_ONLY=1 REMOTE_MIC_TEST_AUDIO_ROUTE=1 swift test --filter SourceMicrophoneRouteIntegrationTests
+```
+
+普通 `swift test` 默认跳过此实机用例。日志链路新增 `AUDIO ROUTE_SETTLE` 和 `phase=output_ready`，应先确认输出就绪，再看到 `phase=trigger_submitted`；持续无法恢复时应明确失败并恢复原输入。详见 `Bugs/2026-09-06-source-microphone-activation-cancelled.md`。
 - Release App 构建与 `scripts/verify-app.sh` 默认结构校验通过，Developer ID 和公证校验未执行。最终文案变更后，82 项受影响测试复核通过。
 - 已检查生产首次引导实体路径浅色/深色共 18 张截图，以及设置页 800 x 650 压力渲染。实际鼠标导航、权限授权、录音和第三方文字上屏仍待现场验证。
 

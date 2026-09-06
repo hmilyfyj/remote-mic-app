@@ -36,6 +36,8 @@ private final class MicrophoneHarness {
     var recoveryWriteFails = false
     var waitForDestination = false
     var destination: ((Bool) -> Void)?
+    var waitForOutput = false
+    var outputReady: ((Bool) -> Void)?
 
     lazy var controller = SourceMicrophoneSessionController(environment: .init(
         currentInput: { self.input },
@@ -79,6 +81,11 @@ private final class MicrophoneHarness {
             if !self.waitForDestination { completion(true) }
             return {}
         },
+        waitForOutput: { completion in
+            self.outputReady = completion
+            if !self.waitForOutput { completion(true) }
+            return {}
+        },
         now: { self.now },
         schedule: { delay, action in
             let timer = Timer(deadline: self.now + delay, action: action)
@@ -115,6 +122,59 @@ private final class MicrophoneHarness {
 }
 
 struct SourceMicrophoneSessionTests {
+    @Test func routeRebindBuffersAudioBeforeFnAndWaitsAfterRestore() {
+        let h = MicrophoneHarness()
+        h.waitForOutput = true
+        h.healthy = false
+        #expect(h.start())
+        h.controller.receive([1, 2, 3], device: h.remote)
+        h.advance(0.2)
+        #expect(h.fn.isEmpty)
+        #expect(h.audio.isEmpty)
+        h.healthy = true
+        h.outputReady?(true)
+        #expect(h.fn == [true])
+        #expect(h.audio == [1, 2, 3])
+        h.controller.stop(device: h.remote)
+        h.completePlayback()
+        #expect(h.fn == [true, false])
+        #expect(h.input == "built_in")
+        #expect(h.controller.phase == .restoring)
+        #expect(h.results.isEmpty)
+        h.outputReady?(true)
+        #expect(h.results == ["completed"])
+    }
+
+    @Test func routeRebindFailureNeverPostsFnAndRestoresInput() {
+        let h = MicrophoneHarness()
+        h.waitForOutput = true
+        #expect(h.start())
+        let staleReady = h.outputReady
+        h.controller.receive([1, 2], device: h.remote)
+        h.outputReady?(false)
+        #expect(h.input == "built_in")
+        h.outputReady?(true)
+        staleReady?(true)
+        #expect(h.fn.isEmpty)
+        #expect(h.audio.isEmpty)
+        #expect(h.results == ["output_not_ready"])
+    }
+
+    @Test func releaseDuringRouteRebindPreservesShortVoice() {
+        let h = MicrophoneHarness()
+        h.waitForOutput = true
+        #expect(h.start())
+        h.controller.receive([4, 5], device: h.remote)
+        h.controller.stop(device: h.remote)
+        h.outputReady?(true)
+        #expect(h.audio == [4, 5])
+        #expect(h.fn == [true])
+        h.completePlayback()
+        h.outputReady?(true)
+        #expect(h.fn == [true, false])
+        #expect(h.results == ["completed"])
+    }
+
     @Test func holdWaitsForRouteThenPlaybackThenReleaseAndRestore() {
         let h = MicrophoneHarness()
         h.deferSelection = true

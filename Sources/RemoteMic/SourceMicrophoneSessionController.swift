@@ -28,6 +28,10 @@ final class SourceMicrophoneSessionController {
         var playback: () -> Playback
         var interruptAudio: () -> Void
         var waitForDestination: (@escaping (Bool) -> Void) -> (() -> Void)
+        var waitForOutput: (@escaping (Bool) -> Void) -> (() -> Void) = { completion in
+            completion(true)
+            return {}
+        }
         var now: () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }
         var schedule: (TimeInterval, @escaping () -> Void) -> (() -> Void) = { delay, operation in
             let item = DispatchWorkItem(block: operation)
@@ -257,10 +261,16 @@ final class SourceMicrophoneSessionController {
             phase = .waiting
             log("phase=switched elapsed_ms=\(elapsedMilliseconds)")
             let operation = generation
-            let cancelWait = environment.waitForDestination { [weak self] ready in
+            let cancelWait = environment.waitForOutput { [weak self] ready in
                 guard let self, self.generation == operation, self.phase == .waiting else { return }
-                guard ready else { self.cancel(reason: "destination_cancelled"); return }
-                self.startTool()
+                guard ready else { self.cancel(reason: "output_not_ready"); return }
+                self.log("phase=output_ready elapsed_ms=\(self.elapsedMilliseconds)")
+                let cancelDestination = self.environment.waitForDestination { [weak self] ready in
+                    guard let self, self.generation == operation, self.phase == .waiting else { return }
+                    guard ready else { self.cancel(reason: "destination_cancelled"); return }
+                    self.startTool()
+                }
+                self.cancellations.append(cancelDestination)
             }
             cancellations.append(cancelWait)
             later(after: 3) { controller in
@@ -432,7 +442,13 @@ final class SourceMicrophoneSessionController {
             _ = environment.writeRecovery(nil)
             log("phase=restored fallback=\(restoreUID != record.previousUID)")
             if restoreUID != record.previousUID, finalReason == "completed" { finalReason = "fallback_restored" }
-            finish()
+            let operation = generation
+            let cancelWait = environment.waitForOutput { [weak self] ready in
+                guard let self, self.generation == operation, self.phase == .restoring else { return }
+                if !ready { self.finalReason = "output_restore_failed" }
+                self.finish()
+            }
+            cancellations.append(cancelWait)
         } else if let current, current != record.targetUID {
             _ = environment.writeRecovery(nil)
             log("phase=restore_skipped reason=current_input_preserved")

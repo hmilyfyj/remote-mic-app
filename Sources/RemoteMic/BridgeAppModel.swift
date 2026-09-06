@@ -476,6 +476,10 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
             case let .waiting(task): return { task.cancel() }
             }
         },
+        waitForOutput: { [weak self] completion in
+            guard let self else { completion(false); return {} }
+            return self.audioOutput.waitForOutputAfterInputChange(completion: completion)
+        },
         log: AppLogger.shared.write,
         finished: { [weak self] reason in self?.finishSourceMicrophoneSession(reason: reason) }
     ))
@@ -1768,7 +1772,7 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
                 return
             }
             let configurationHealthy = self.audioOutput.isConfigurationHealthyForDiagnostics
-            if self.sourceMicrophoneSession.isBusy, configurationHealthy {
+            if self.sourceMicrophoneSession.isBusy {
                 self.refreshAudioDevices()
                 return
             }
@@ -2351,6 +2355,9 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
             sourceMicrophoneStatus = LocalizedMessage("audio.source_switch.audio_unavailable")
             return
         }
+        audioRecoveryWorkItem?.cancel()
+        audioRecoveryWorkItem = nil
+        audioRecoveryGeneration &+= 1
         sourceMicrophoneBridge = bridge
         sourceMicrophoneRemoteStopped = false
         activeBluetoothVoiceDeviceIdentifier = identifier
