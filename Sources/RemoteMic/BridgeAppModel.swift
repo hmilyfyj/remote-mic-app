@@ -410,6 +410,69 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
     })
     private let webRemoteClient = WebRemoteRelayClient()
     private let voiceFunctionMapper = RemoteVoiceFunctionMapper()
+    @Published private(set) var sourceMicrophoneStatus = LocalizedMessage("audio.source_switch.idle")
+    private weak var sourceMicrophoneBridge: XiaomiBluetoothBridge?
+    private var sourceMicrophoneRemoteStopped = false
+    private var pendingSourceMicrophoneSetting: Bool?
+    private var sourceMicrophoneModeEnabled: Bool {
+        settings.sourceMicrophoneSwitchingEnabled && settings.voiceKeyMode == .function
+    }
+    private lazy var sourceMicrophoneFnMonitor: SourceMicrophoneFnMonitor = {
+        let monitor = SourceMicrophoneFnMonitor(
+            syntheticMarker: KeyboardInjector.syntheticEventMarker,
+            logger: AppLogger.shared.write
+        )
+        monitor.remoteBusy = { [weak self] in self?.sourceMicrophoneSession.isBusy ?? false }
+        monitor.tapMode = { [weak self] in self?.settings.voiceFnTapModeEnabled ?? false }
+        monitor.onUnavailable = { [weak self] in
+            guard let self else { return }
+            let generation = self.sourceMicrophoneSession.generation
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.sourceMicrophoneSession.generation == generation else { return }
+                self.sourceMicrophoneSession.cancel(reason: "fn_monitor_unavailable")
+            }
+        }
+        return monitor
+    }()
+    private lazy var sourceMicrophoneSession: SourceMicrophoneSessionController = SourceMicrophoneSessionController(environment: .init(
+        currentInput: { CoreAudioDeviceCatalog.defaultInputDevice()?.uid },
+        availableInputs: { CoreAudioDeviceCatalog.inputDevices().map(\.uid) },
+        fallbackInput: { CoreAudioDeviceCatalog.preferredFallbackInput(excludingUID: $0)?.uid },
+        selectInput: { uid in
+            guard let device = CoreAudioDeviceCatalog.inputDevices().first(where: { $0.uid == uid }) else { return false }
+            return CoreAudioDeviceCatalog.setDefaultInputDevice(device) == noErr
+        },
+        readRecovery: { [weak self] in self?.settings.sourceMicrophoneRecovery },
+        writeRecovery: { [weak self] in self?.settings.persistSourceMicrophoneRecovery($0) ?? false },
+        setFn: { KeyboardInjector.setFunctionKeyPressed($0) },
+        enqueue: { [weak self] samples in
+            guard let self else { return false }
+            let generation = self.voiceAudioDeliveryDiagnostic.generation
+            let accepted = self.audioOutput.enqueue(samples: samples, deliveryGeneration: generation)
+            self.recordVoiceAudioEnqueueOutcome(accepted: accepted, deliveryGeneration: generation)
+            return accepted
+        },
+        playback: { [weak self] in
+            guard let self else { return .init(pendingSamples: 0, interruptedSamples: 0, healthy: false) }
+            let snapshot = self.audioOutput.diagnosticSnapshot()
+            return .init(
+                pendingSamples: snapshot.pendingSamples,
+                interruptedSamples: snapshot.counters.interruptedSamples,
+                healthy: snapshot.configurationHealthy
+            )
+        },
+        interruptAudio: { [weak self] in self?.audioOutput.endSession() },
+        waitForDestination: { [weak self] completion in
+            guard let self else { completion(false); return {} }
+            switch self.voiceInputDestinationCoordinator.waitUntilReady(completion: { completion($0 == .ready) }) {
+            case .immediate: completion(true); return {}
+            case .cancelled: completion(false); return {}
+            case let .waiting(task): return { task.cancel() }
+            }
+        },
+        log: AppLogger.shared.write,
+        finished: { [weak self] reason in self?.finishSourceMicrophoneSession(reason: reason) }
+    ))
     private lazy var preferredInputSourceMonitor = PreferredInputSourceMonitor(
         voiceTool: { [weak self] in
             self?.settings.onboardingVoiceTool ?? .unselected
@@ -872,6 +935,7 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
     func startIfNeeded() {
         guard !started else { return }
         started = true
+        sourceMicrophoneSession.recoverAfterLaunch()
         startAudioSubsystem()
         appleRemoteAudioClient.start()
         applyHIDSettings()
@@ -891,6 +955,8 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
     }
 
     func stop() {
+        sourceMicrophoneSession.shutdown()
+        sourceMicrophoneFnMonitor.stop()
         privateFeature.stop()
         macroFeature.stop()
         preferredInputSourceMonitor.stop()
@@ -1517,6 +1583,7 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
     }
 
     func applyAudioSettings(reason: String = "settings_change") {
+        sourceMicrophoneSession.cancel(reason: "audio_reconfigure")
         stopLongRecording(reason: "audio_reconfigure")
         guard shouldKeepVirtualAudioActive else {
             releaseVirtualAudioOutputIfUnused(reason: reason)
@@ -1546,6 +1613,7 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
         }
 
         if event.isSuspending {
+            sourceMicrophoneSession.cancel(reason: "system_suspended")
             if hasActiveVirtualAudioSource {
                 AppLogger.shared.write(
                     "SYSTEM AUDIO suspend_deferred event=\(event.rawValue) " +
@@ -1574,6 +1642,7 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
 
     @discardableResult
     private func configureVirtualAudioOutput(reason: String) -> Bool {
+        guard !sourceMicrophoneSession.isBusy else { return audioOutput.isReadyForTestTone }
         cancelVirtualAudioReleaseIfPending(trigger: "rebind_\(reason)")
         virtualAudioReleaseGeneration &+= 1
         AppLogger.shared.write("AUDIO REBIND begin reason=\(reason) state={\(audioOutput.diagnosticState())}")
@@ -1662,6 +1731,7 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
     private func scheduleAudioRecovery(reason: String, details: String = "") {
         DispatchQueue.main.async { [weak self] in
             guard let self, self.started else { return }
+            self.sourceMicrophoneSession.inputChanged()
             guard !self.settings.selectedAudioDeviceUID.isEmpty else {
                 AppLogger.shared.write("AUDIO RECOVERY ignored reason=\(reason) detail=\(details) no_selected_device")
                 return
@@ -1674,6 +1744,10 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
                 return
             }
             let configurationHealthy = self.audioOutput.isConfigurationHealthyForDiagnostics
+            if self.sourceMicrophoneSession.isBusy, configurationHealthy {
+                self.refreshAudioDevices()
+                return
+            }
             guard !VirtualAudioRecoveryPolicy.shouldIgnoreDefaultSystemOutputChange(
                 details: details,
                 configurationHealthy: configurationHealthy
@@ -1863,7 +1937,15 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
             allowVoiceKeyModeFallback: allowVoiceKeyModeFallback
         )
         var powerKeySuppressed: Bool
-        if requestedFnTapMode, accessibilityGranted {
+        if sourceMicrophoneModeEnabled {
+            voiceFnTapSession.setEnabled(false)
+            powerKeySuppressed = applyVoiceFunctionMapping(neutralizeVoiceKey: true)
+            let monitorReady = started && accessibilityGranted && sourceMicrophoneFnMonitor.start()
+            if !monitorReady || !voiceFunctionMapper.isVoiceKeyNeutralized {
+                sourceMicrophoneSession.cancel(reason: "mapping_or_permission_unavailable")
+                sourceMicrophoneStatus = LocalizedMessage("audio.source_switch.permission")
+            }
+        } else if requestedFnTapMode, accessibilityGranted {
             powerKeySuppressed = applyVoiceFunctionMapping(neutralizeVoiceKey: true)
             if voiceFunctionMapper.isVoiceKeyNeutralized {
                 voiceFnTapSession.setEnabled(true)
@@ -2175,7 +2257,125 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
         applyHIDSettings()
     }
 
+    func setSourceMicrophoneSwitchingEnabled(_ enabled: Bool) {
+        if sourceMicrophoneSession.isBusy {
+            pendingSourceMicrophoneSetting = enabled
+            sourceMicrophoneStatus = LocalizedMessage("audio.source_switch.wait")
+            sourceMicrophoneSession.cancel(reason: "setting_changed")
+            return
+        }
+        guard !isStreaming, !sourceMicrophoneFnMonitor.externalVoiceBusy else {
+            sourceMicrophoneStatus = LocalizedMessage("audio.source_switch.wait")
+            return
+        }
+        guard !enabled || settings.voiceKeyMode == .function else { return }
+        if enabled, !KeyboardInjector.isAccessibilityTrusted {
+            _ = KeyboardInjector.requestAccessibilityAccess()
+            sourceMicrophoneStatus = LocalizedMessage("audio.source_switch.permission")
+            return
+        }
+        settings.sourceMicrophoneSwitchingEnabled = enabled
+        managedDefaultInputTransition = nil
+        if !enabled { sourceMicrophoneFnMonitor.stop() }
+        sourceMicrophoneStatus = LocalizedMessage("audio.source_switch.idle")
+        applyHIDSettings()
+    }
+
+    private func beginSourceMicrophoneSession(_ bridge: XiaomiBluetoothBridge) {
+        guard let identifier = bridge.deviceIdentifier else { return }
+        if sourceMicrophoneSession.owns(identifier) {
+            if sourceMicrophoneRemoteStopped {
+                let queued = sourceMicrophoneSession.start(
+                    device: identifier,
+                    targetUID: settings.selectedAudioDeviceUID,
+                    mode: settings.voiceFnTapModeEnabled ? .tap : .hold,
+                    externalVoiceBusy: sourceMicrophoneFnMonitor.externalVoiceBusy
+                )
+                if queued {
+                    sourceMicrophoneRemoteStopped = false
+                } else {
+                    _ = bridge.requestMicrophoneClose()
+                    sourceMicrophoneStatus = LocalizedMessage("audio.source_switch.wait")
+                }
+            }
+            return
+        }
+        guard !sourceMicrophoneSession.isBusy, !hasActiveVirtualAudioSource,
+              !systemAudioSuspensionState.isSuspended,
+              !longRecordingRequested, !rc003VoiceExtensionTestEnabled else {
+            _ = bridge.requestMicrophoneClose()
+            sourceMicrophoneStatus = LocalizedMessage("audio.source_switch.wait")
+            return
+        }
+        let profileID = activateRemoteProfile(for: bridge)
+        let model = profileID.flatMap { id in settings.remoteDeviceProfiles.first { $0.id == id }?.model }
+        guard model == .rc003, settings.selectedAudioDeviceUID == "MiRemoteV2ch_UID" else {
+            _ = bridge.requestMicrophoneClose()
+            sourceMicrophoneStatus = LocalizedMessage("audio.source_switch.unsupported")
+            return
+        }
+        applyHIDSettings(allowVoiceKeyModeFallback: false)
+        guard KeyboardInjector.isAccessibilityTrusted,
+              voiceFunctionMapper.isVoiceKeyNeutralized, sourceMicrophoneFnMonitor.isRunning,
+              !sourceMicrophoneFnMonitor.externalVoiceBusy else {
+            _ = bridge.requestMicrophoneClose()
+            sourceMicrophoneStatus = LocalizedMessage("audio.source_switch.permission_or_busy")
+            return
+        }
+        guard ensureVirtualAudioOutputReady(reason: "source_voice_start") else {
+            _ = bridge.requestMicrophoneClose()
+            sourceMicrophoneStatus = LocalizedMessage("audio.source_switch.audio_unavailable")
+            return
+        }
+        sourceMicrophoneBridge = bridge
+        sourceMicrophoneRemoteStopped = false
+        activeBluetoothVoiceDeviceIdentifier = identifier
+        bluetoothVoiceActive = true
+        resetCurrentVoiceSampleReceipt()
+        beginVoiceSessionIfNeeded()
+        sourceMicrophoneStatus = LocalizedMessage("audio.source_switch.active")
+        let accepted = sourceMicrophoneSession.start(
+            device: identifier,
+            targetUID: settings.selectedAudioDeviceUID,
+            mode: settings.voiceFnTapModeEnabled ? .tap : .hold,
+            externalVoiceBusy: sourceMicrophoneFnMonitor.externalVoiceBusy
+        )
+        if !accepted { finishSourceMicrophoneSession(reason: "start_rejected") }
+    }
+
+    private func finishSourceMicrophoneSession(reason: String) {
+        if sourceMicrophoneSession.hasPendingVoice { return }
+        if !sourceMicrophoneRemoteStopped { _ = sourceMicrophoneBridge?.requestMicrophoneClose() }
+        sourceMicrophoneBridge = nil
+        if activeBluetoothVoiceDeviceIdentifier != nil {
+            bluetoothVoiceActive = false
+            activeBluetoothVoiceDeviceIdentifier = nil
+            endVoiceSessionIfNeeded(flushAudio: false)
+        }
+        let status: String
+        switch reason {
+        case "completed", "launch_recovery": status = "restored"
+        case "fallback_restored": status = "fallback"
+        case "input_changed": status = "user_changed"
+        case "restore_unavailable", "restore_failed", "restore_timeout": status = "restore_failed"
+        case "stop_failed": status = "stop_failed"
+        default: status = "failed"
+        }
+        sourceMicrophoneStatus = LocalizedMessage("audio.source_switch.\(status)")
+        if let enabled = pendingSourceMicrophoneSetting {
+            pendingSourceMicrophoneSetting = nil
+            setSourceMicrophoneSwitchingEnabled(enabled)
+        }
+        if started { releaseVirtualAudioOutputIfUnused(reason: "source_session_finished") }
+    }
+
     func setVoiceFnTapModeEnabled(_ enabled: Bool) {
+        if sourceMicrophoneModeEnabled {
+            guard !isStreaming, !sourceMicrophoneFnMonitor.externalVoiceBusy else { return }
+            settings.voiceFnTapModeEnabled = enabled
+            applyHIDSettings()
+            return
+        }
         guard settings.voiceKeyMode == .function else {
             settings.voiceFnTapModeEnabled = false
             return
@@ -2925,6 +3125,7 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
     }
 
     private func beginAppleRemoteVoice(for device: RemoteHardwareDeviceIdentity) {
+        guard !sourceMicrophoneSession.isBusy else { return }
         guard appleRemoteVoiceDevices.insert(device).inserted else { return }
         suppressAppleRemoteTouchDuringVoice(for: device)
         if appleRemoteVoiceStopping {
@@ -3331,6 +3532,9 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
                 remotePowerStates.removeValue(forKey: profileID)
             }
             let voiceWasActive = identifier == activeBluetoothVoiceDeviceIdentifier
+            if voiceWasActive, sourceMicrophoneSession.isBusy {
+                sourceMicrophoneSession.cancel(reason: "disconnect")
+            }
             if voiceWasActive {
                 if rc003VoiceExtensionTestEnabled,
                    rc003VoiceExtensionActive,
@@ -3367,6 +3571,10 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
     }
 
     func bluetoothBridgeDidStartVoice(_ bridge: XiaomiBluetoothBridge) {
+        if sourceMicrophoneModeEnabled {
+            beginSourceMicrophoneSession(bridge)
+            return
+        }
         guard let identifier = bridge.deviceIdentifier else { return }
         let isRC003Continuation = rc003VoiceExtensionTestEnabled &&
             rc003VoiceExtensionActive &&
@@ -3473,6 +3681,11 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
     }
 
     func bluetoothBridgeDidStopVoice(_ bridge: XiaomiBluetoothBridge) {
+        if let identifier = bridge.deviceIdentifier, sourceMicrophoneSession.owns(identifier) {
+            sourceMicrophoneRemoteStopped = true
+            sourceMicrophoneSession.stop(device: identifier)
+            return
+        }
         guard bridge.deviceIdentifier == activeBluetoothVoiceDeviceIdentifier else { return }
         if rc003VoiceExtensionTestEnabled,
            rc003VoiceExtensionActive,
@@ -3558,6 +3771,13 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
     }
 
     func bluetoothBridge(_ bridge: XiaomiBluetoothBridge, didDecode samples: [Int16]) {
+        if let identifier = bridge.deviceIdentifier, sourceMicrophoneSession.owns(identifier) {
+            recordingAssetCoordinator.append(samples: samples)
+            recordVoiceAudioReceipt(samples: samples, route: .virtualAudioDirect)
+            publishCurrentVoiceSampleReceiptIfNeeded(sampleCount: samples.count)
+            sourceMicrophoneSession.receive(samples, device: identifier)
+            return
+        }
         guard let identifier = bridge.deviceIdentifier,
               identifier == activeBluetoothVoiceDeviceIdentifier
         else { return }
@@ -4260,6 +4480,7 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
     }
 
     private func startPhoneVoice(source: MobileVoiceSource) -> RemoteVoiceStartResult {
+        guard !sourceMicrophoneSession.isBusy else { return .busy }
         guard activeMobileVoiceSource == nil else {
             AppLogger.shared.write(
                 "MOBILE VOICE start_rejected reason=busy requested=\(source.logName) " +
@@ -4376,7 +4597,7 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
     }
 
     private var shouldKeepVirtualAudioActive: Bool {
-        VirtualAudioConnectionLifecyclePolicy.shouldBeActive(
+        sourceMicrophoneSession.isBusy || VirtualAudioConnectionLifecyclePolicy.shouldBeActive(
             readyBluetoothBridgeCount: readyBluetoothBridgeCount,
             bluetoothVoiceActive: bluetoothVoiceActive,
             mobileVoiceActive: activeMobileVoiceSource != nil ||
@@ -4387,7 +4608,7 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
     }
 
     private var hasActiveVirtualAudioSource: Bool {
-        bluetoothVoiceActive || activeMobileVoiceSource != nil ||
+        sourceMicrophoneSession.isBusy || bluetoothVoiceActive || activeMobileVoiceSource != nil ||
             !appleRemoteVoiceDevices.isEmpty || appleRemoteVoiceStopping || isPlayingTestTone
     }
 
@@ -4504,6 +4725,7 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
     }
 
     private func switchDefaultInputToFallbackIfNeeded(reason: String) {
+        guard !settings.sourceMicrophoneSwitchingEnabled, !sourceMicrophoneSession.isBusy else { return }
         guard managedDefaultInputTransition == nil else { return }
         let selectedUID = settings.selectedAudioDeviceUID
         guard !selectedUID.isEmpty,
@@ -4533,6 +4755,7 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
     }
 
     private func restoreManagedDefaultInputIfAppropriate(reason: String) {
+        guard !settings.sourceMicrophoneSwitchingEnabled, !sourceMicrophoneSession.isBusy else { return }
         guard let transition = managedDefaultInputTransition else { return }
         let currentDefault = CoreAudioDeviceCatalog.defaultInputDevice()
         guard DefaultInputFallbackPolicy.shouldRestoreVirtualInput(
@@ -4823,7 +5046,8 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
     private func applyVoiceFunctionMapping(neutralizeVoiceKey: Bool) -> Bool {
         let applied = voiceFunctionMapper.apply(
             suppressPowerKey: settings.customMappingEnabled,
-            neutralizeVoiceKey: neutralizeVoiceKey
+            neutralizeVoiceKey: neutralizeVoiceKey,
+            verifyVoiceKeyNeutralization: sourceMicrophoneModeEnabled
         )
         if !isStreaming {
             isVoiceTriggerEnabled = applied

@@ -27,6 +27,7 @@ xcrun swiftc \
   "$ROOT/Sources/RemoteMic/VoiceFunctionKeyLatch.swift" \
   "$ROOT/Sources/RemoteMic/VoiceInputDestinationCoordinator.swift" \
   "$ROOT/Sources/RemoteMic/VoiceFnTapSessionController.swift" \
+  "$ROOT/Sources/RemoteMic/SourceMicrophoneSessionController.swift" \
   "$ROOT/Sources/RemoteMic/RemoteVoiceFunctionMapper.swift" \
   "$ROOT/Sources/RemoteMic/AppLogger.swift" \
   "$ROOT/Sources/RemoteMic/TestTone.swift" \
@@ -37,5 +38,5 @@ xcrun swiftc \
 if [[ "$SKIP_SWIFT_PACKAGE_BUILD" == "0" ]]; then
   xcrun swift build
 else
-  print "SWIFT PACKAGE BUILD SKIPPED: already completed by the current CI job"
+  print "SWIFT PACKAGE BUILD SKIPPED: SKIP_SWIFT_PACKAGE_BUILD=1"
 fi

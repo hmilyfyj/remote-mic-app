@@ -369,6 +369,30 @@ final class AppSettings: ObservableObject {
         }
     }
 
+    @Published var sourceMicrophoneSwitchingEnabled: Bool {
+        didSet { defaults.set(sourceMicrophoneSwitchingEnabled, forKey: "sourceMicrophoneSwitchingEnabled") }
+    }
+
+    var sourceMicrophoneRecovery: SourceMicrophoneSessionController.RecoveryRecord? {
+        get {
+            guard let data = defaults.data(forKey: "sourceMicrophoneRecovery") else { return nil }
+            return try? JSONDecoder().decode(SourceMicrophoneSessionController.RecoveryRecord.self, from: data)
+        }
+        set {
+            if let newValue, let data = try? JSONEncoder().encode(newValue) {
+                defaults.set(data, forKey: "sourceMicrophoneRecovery")
+            } else {
+                defaults.removeObject(forKey: "sourceMicrophoneRecovery")
+            }
+        }
+    }
+
+    func persistSourceMicrophoneRecovery(_ record: SourceMicrophoneSessionController.RecoveryRecord?) -> Bool {
+        sourceMicrophoneRecovery = record
+        // The recovery record must reach disk before changing the system default.
+        return defaults.synchronize()
+    }
+
     @Published var voiceKeyMode: VoiceKeyMode {
         didSet {
             defaults.set(voiceKeyMode.rawValue, forKey: Keys.voiceKeyMode)
@@ -581,6 +605,7 @@ final class AppSettings: ObservableObject {
             forKey: Keys.experimentalContinuousRecordingEnabled
         )
         voiceFnTapModeEnabled = defaults.bool(forKey: Keys.voiceFnTapModeEnabled)
+        sourceMicrophoneSwitchingEnabled = defaults.bool(forKey: "sourceMicrophoneSwitchingEnabled")
         voiceKeyMode = VoiceKeyMode(
             rawValue: defaults.string(forKey: Keys.voiceKeyMode) ?? ""
         ) ?? .function

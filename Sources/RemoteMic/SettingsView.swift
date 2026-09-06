@@ -1279,6 +1279,8 @@ struct SettingsView: View {
                 mappingVoiceKeyModeControl
                 Divider()
                 mappingVoiceFnTapControl
+                Divider()
+                mappingSourceMicrophoneControl
                 HStack {
                     Spacer(minLength: 0)
                     mappingRestoreDefaultsButton
@@ -1325,6 +1327,7 @@ struct SettingsView: View {
             .pickerStyle(.segmented)
             .labelsHidden()
             .controlSize(.small)
+            .disabled(settings.sourceMicrophoneSwitchingEnabled)
             Text("connection.voice_key_mode.help")
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)
@@ -1364,6 +1367,27 @@ struct SettingsView: View {
         .help(localization.text("connection.voice_fn_tap.hint"))
         .opacity(settings.voiceKeyMode == .function ? 1 : 0.55)
         .disabled(settings.voiceKeyMode != .function)
+    }
+
+    private var mappingSourceMicrophoneControl: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Toggle("audio.source_switch.enabled", isOn: Binding(
+                get: { settings.sourceMicrophoneSwitchingEnabled },
+                set: { model.setSourceMicrophoneSwitchingEnabled($0) }
+            ))
+            .font(.system(size: 12, weight: .medium))
+            .toggleStyle(.switch)
+            .disabled(settings.voiceKeyMode != .function)
+            Text("audio.source_switch.impact")
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            if settings.sourceMicrophoneSwitchingEnabled {
+                Text(model.sourceMicrophoneStatus.text(using: localization))
+                    .font(.system(size: 12))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
     }
 
     private var mappingRestoreDefaultsButton: some View {
