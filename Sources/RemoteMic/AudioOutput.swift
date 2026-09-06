@@ -402,6 +402,11 @@ final class VirtualAudioOutput {
 
     @discardableResult
     func configure(deviceUID: String) -> Bool {
+        if selectedDevice?.uid == deviceUID, !isConfigurationHealthy,
+           pendingVoiceBufferCountForDiagnostics == 0, restartSelectedOutput() {
+            AppLogger.shared.write("AUDIO CONFIGURE reused_existing_output=true")
+            return true
+        }
         let previousState = diagnosticState()
         stop()
         guard !deviceUID.isEmpty else {
@@ -489,6 +494,25 @@ final class VirtualAudioOutput {
         isConfigurationHealthy
     }
 
+    private func restartSelectedOutput() -> Bool {
+        guard let engine, let player, let selectedDevice,
+              pendingVoiceBufferCountForDiagnostics == 0 else { return false }
+        player.stop()
+        engine.stop()
+        do {
+            try engine.outputNode.auAudioUnit.setDeviceID(selectedDevice.id)
+            try engine.start()
+            guard AudioPlayerNodeSafety.play(player) else {
+                AppLogger.shared.write("AUDIO OUTPUT_RESTART result=player_start_failed")
+                return false
+            }
+            return true
+        } catch {
+            AppLogger.shared.write("AUDIO OUTPUT_RESTART result=failed " + AppLogger.errorFields(error))
+            return false
+        }
+    }
+
     /// Default-input changes can asynchronously reset AVAudioEngine's explicit output binding.
     /// Only restart between deliveries; the session controller retains incoming PCM until ready.
     func waitForOutputAfterInputChange(completion: @escaping (Bool) -> Void) -> () -> Void {
@@ -509,7 +533,7 @@ final class VirtualAudioOutput {
             let now = ProcessInfo.processInfo.systemUptime
             guard self.engineConfigurationGeneration == generation,
                   self.pendingVoiceBufferCountForDiagnostics == 0,
-                  let engine = self.engine, let player = self.player, let device = self.selectedDevice,
+                  self.engine != nil, self.player != nil, self.selectedDevice != nil,
                   now - started < 1 else {
                 complete(false, reason: "unavailable")
                 return
@@ -523,14 +547,7 @@ final class VirtualAudioOutput {
             } else {
                 stableSince = nil
                 attempts += 1
-                do {
-                    player.stop()
-                    engine.stop()
-                    try engine.outputNode.auAudioUnit.setDeviceID(device.id)
-                    try engine.start()
-                    guard AudioPlayerNodeSafety.play(player) else { complete(false, reason: "player_start_failed"); return }
-                } catch {
-                    AppLogger.shared.write("AUDIO ROUTE_SETTLE restart_failed generation=\(generation) " + AppLogger.errorFields(error))
+                if !self.restartSelectedOutput() {
                     complete(false, reason: "restart_failed")
                     return
                 }

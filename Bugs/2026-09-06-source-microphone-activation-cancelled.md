@@ -29,16 +29,20 @@ The first integration experiment found that restarting the engine alone retained
 the player's old timeline: enqueue succeeded but playback never drained, even
 after 3 s. Stopping the empty player before engine restart fixed that failure.
 Normal pending voice audio is still drained before stopping or restoring input.
+Startup verification also reproduced the generic idle recovery loop. Reconfiguring
+the same unhealthy output now reuses the empty engine/player through the same
+restart path. A separate opt-in integration case verifies idle recovery stability.
 
 ## Validation
 
-- Full local-only suite: 524 tests reported, with the opt-in hardware test skipped
+- Full local-only suite: 525 tests reported, with both opt-in hardware tests skipped
   in the default run and separately passed below.
 - `REMOTE_MIC_LOCAL_ONLY=1 swift test --filter SourceMicrophoneSessionTests`:
   29 tests passed, including route-wait buffering, failed readiness, stale callbacks,
   and early remote release.
 - `REMOTE_MIC_LOCAL_ONLY=1 REMOTE_MIC_TEST_AUDIO_ROUTE=1 swift test --filter SourceMicrophoneRouteIntegrationTests`:
-  passed in 24.433 s. Ten round trips changed real system input 20 times. Each
+  both tests passed in 26.333 s, including idle recovery. Ten round trips changed
+  real system input 20 times. Each
   transition retained the selected virtual output through a delayed check and
   delivered 1,600 silent samples via `.dataPlayedBack`, with zero pending or
   interrupted samples. Original input restored at completion.

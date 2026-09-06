@@ -2,7 +2,23 @@ import Foundation
 import Testing
 @testable import RemoteMic
 
+@Suite(.serialized)
 struct SourceMicrophoneRouteIntegrationTests {
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["REMOTE_MIC_TEST_AUDIO_ROUTE"] == "1"))
+    @MainActor func idleRecoveryReusesOutputUntilStable() async throws {
+        let target = try #require(CoreAudioDeviceCatalog.inputDevices().first { $0.uid == "MiRemoteV2ch_UID" })
+        let output = VirtualAudioOutput()
+        defer { output.stop() }
+        for _ in 0..<3 {
+            #expect(output.configure(deviceUID: target.uid))
+            try await Task.sleep(nanoseconds: 500_000_000)
+            if output.isConfigurationHealthyForDiagnostics { break }
+        }
+        try #require(output.isConfigurationHealthyForDiagnostics)
+        try await Task.sleep(nanoseconds: 1_000_000_000)
+        #expect(output.isConfigurationHealthyForDiagnostics)
+    }
+
     @Test(.enabled(if: ProcessInfo.processInfo.environment["REMOTE_MIC_TEST_AUDIO_ROUTE"] == "1"))
     @MainActor func inputSwitchRetainsVirtualOutputAndDrains() async throws {
         let original = try #require(CoreAudioDeviceCatalog.defaultInputDevice())

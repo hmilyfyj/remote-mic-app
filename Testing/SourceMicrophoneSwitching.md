@@ -18,7 +18,7 @@
 REMOTE_MIC_LOCAL_ONLY=1 REMOTE_MIC_TEST_AUDIO_ROUTE=1 swift test --filter SourceMicrophoneRouteIntegrationTests
 ```
 
-普通 `swift test` 默认跳过此实机用例。日志链路新增 `AUDIO ROUTE_SETTLE` 和 `phase=output_ready`，应先确认输出就绪，再看到 `phase=trigger_submitted`；持续无法恢复时应明确失败并恢复原输入。详见 `Bugs/2026-09-06-source-microphone-activation-cancelled.md`。
+普通 `swift test` 默认跳过这两个实机用例；专用运行另含空闲音频恢复检查，确认恢复后持续健康。日志链路新增 `AUDIO ROUTE_SETTLE` 和 `phase=output_ready`，应先确认输出就绪，再看到 `phase=trigger_submitted`；持续无法恢复时应明确失败并恢复原输入。详见 `Bugs/2026-09-06-source-microphone-activation-cancelled.md`。
 - Release App 构建与 `scripts/verify-app.sh` 默认结构校验通过，Developer ID 和公证校验未执行。最终文案变更后，82 项受影响测试复核通过。
 - 已检查生产首次引导实体路径浅色/深色共 18 张截图，以及设置页 800 x 650 压力渲染。实际鼠标导航、权限授权、录音和第三方文字上屏仍待现场验证。
 
