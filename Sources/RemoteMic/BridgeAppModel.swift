@@ -2460,6 +2460,7 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
             pendingSourceMicrophoneSetting = nil
             setSourceMicrophoneSwitchingEnabled(enabled)
         }
+        voiceKeyModeChange.applyWhenIdle()
         if started { releaseVirtualAudioOutputIfUnused(reason: "source_session_finished") }
     }
 

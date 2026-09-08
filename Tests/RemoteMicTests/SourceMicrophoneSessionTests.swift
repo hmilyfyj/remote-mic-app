@@ -137,6 +137,28 @@ private final class MicrophoneHarness {
 }
 
 struct SourceMicrophoneSessionTests {
+    @Test func modeSelectionDuringLaunchRecoveryAppliesAfterOutputRecovery() {
+        let h = MicrophoneHarness()
+        h.input = "virtual"
+        h.recovery = .init(previousUID: "built_in", targetUID: "virtual")
+        h.waitForOutput = true
+        var mode = VoiceKeyMode.microphoneOnly
+        let selection = VoiceKeyModeChangeController(environment: .init(
+            current: { mode }, isBusy: { h.controller.isBusy },
+            prepare: { $0(true) }, apply: { mode = $0; return true },
+            changed: { _, _ in }, log: { _ in }
+        ))
+        h.onFinished = { selection.applyWhenIdle() }
+        h.controller.recoverAfterLaunch()
+        selection.request(.function)
+        #expect(selection.pending == .function)
+        #expect(mode == .microphoneOnly)
+        h.outputReady?(true)
+        #expect(h.results == ["launch_recovery"])
+        #expect(mode == .function)
+        #expect(h.fn.isEmpty)
+    }
+
     @Test func modeRequestDuringRestoreChangesOnlyTheNextVoice() {
         let h = MicrophoneHarness()
         h.restoration = .init(delay: 2)
