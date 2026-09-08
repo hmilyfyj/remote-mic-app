@@ -1202,10 +1202,13 @@ struct SettingsView: View {
                         return
                     }
                     guard let target = mappingEditingTarget else { return }
-                    let scrollTarget = settings.configuredAction(
+                    let editorAction = settings.configuredAction(
                         for: target.button,
                         trigger: target.trigger
-                    ).action == .customShortcut
+                    ).action
+                    let scrollTarget = editorAction == .runMacShortcut
+                        ? "mapping-mac-shortcut-editor"
+                        : editorAction == .customShortcut
                         ? "mapping-shortcut-editor-\(target.id)"
                         : "mapping-action-editor"
                     DispatchQueue.main.async {
@@ -1217,6 +1220,16 @@ struct SettingsView: View {
                     DispatchQueue.main.async {
                         withAnimation(.easeInOut(duration: 0.25)) {
                             proxy.scrollTo("mapping-action-editor", anchor: .top)
+                        }
+                    }
+                }
+                .onChange(of: mappingEditingTarget.map {
+                    settings.configuredAction(for: $0.button, trigger: $0.trigger).action
+                }) { action in
+                    guard action == .runMacShortcut else { return }
+                    DispatchQueue.main.async {
+                        withAnimation(.easeInOut(duration: 0.25)) {
+                            proxy.scrollTo("mapping-mac-shortcut-editor", anchor: .top)
                         }
                     }
                 }
@@ -1733,8 +1746,19 @@ struct SettingsView: View {
                 )
             }
 
+            if configured.action == .runMacShortcut {
+                MacShortcutEditor(
+                    service: model.macShortcuts,
+                    localization: localization,
+                    selected: configured.macShortcut,
+                    onSelect: { settings.setMacShortcut($0, for: button, trigger: trigger) }
+                )
+                .id("mapping-mac-shortcut-editor")
+            }
+
             if trigger == .singleClick,
                configured.action != .disabled,
+               configured.action != .runMacShortcut,
                !configured.action.allowsRepeat {
                 mappingRapidPressControl(button: button)
             }
@@ -1848,7 +1872,7 @@ struct SettingsView: View {
                                         ? localization.text("common.suffix.experimental_disabled")
                                         : "")
                         )
-                        .lineLimit(1)
+                        .lineLimit(action == .runMacShortcut ? 2 : 1)
                         .truncationMode(.tail)
                         Spacer(minLength: 0)
                     }
@@ -2354,6 +2378,9 @@ struct SettingsView: View {
             return settings.customApplicationProfile(id: configured.applicationProfileID)?.displayName
                 ?? localization.text("custom_application.not_configured")
         }
+        if configured.action == .runMacShortcut {
+            return configured.macShortcut?.name ?? localization.text("mac_shortcuts.choose")
+        }
         switch configured.action {
         case .arrowUp: return "↑"
         case .arrowDown: return "↓"
@@ -2374,7 +2401,7 @@ struct SettingsView: View {
             current: .disabled,
             experimentalContinuousRecordingEnabled: settings.experimentalContinuousRecordingEnabled
         ).filter {
-            $0 != .disabled && $0 != .customShortcut && $0 != .openCustomApplication
+            $0 != .disabled && $0 != .customShortcut && $0 != .openCustomApplication && $0 != .runMacShortcut
         }
         return ButtonActionCategory.allCases.compactMap { category in
             let actions: [ButtonProfileHostAction] = availableActions

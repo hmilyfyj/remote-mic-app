@@ -93,7 +93,26 @@ enum SettingsScreenshotRenderer {
                 trigger: .singleClick
             )
         }
-        let model = BridgeAppModel(settings: settings, initialAudioInputDevices: inputDevices)
+        let macShortcutFixture = ProcessInfo.processInfo.environment["REMOTE_MIC_SETTINGS_SCREENSHOT_MAC_SHORTCUT"]
+        let shortcutService: MacShortcutsService
+        if let macShortcutFixture {
+            let fixture = MacShortcut(id: UUID(uuidString: "11111111-1111-4111-8111-111111111111")!, name: "Start work / 开始工作")
+            settings.customMappingEnabled = true
+            settings.setAction(.runMacShortcut, for: .ok, trigger: .singleClick)
+            settings.setMacShortcut(fixture, for: .ok, trigger: .singleClick)
+            shortcutService = MacShortcutsService { _, _ in
+                if macShortcutFixture == "error" { throw MacShortcutsError.unavailable }
+                if macShortcutFixture == "missing" { return Data() }
+                return Data("""
+                Start work / 开始工作 (11111111-1111-4111-8111-111111111111)
+                Focus / 专注 (22222222-2222-4222-8222-222222222222)
+                """.utf8)
+            }
+            Task { await shortcutService.refresh() }
+        } else {
+            shortcutService = MacShortcutsService()
+        }
+        let model = BridgeAppModel(settings: settings, initialAudioInputDevices: inputDevices, macShortcuts: shortcutService)
         let updateInformation = UpdateInformationStore()
         let localization = LocalizationStore(settings: settings)
         model.privateFeature.updateLocaleIdentifier(localization.locale.identifier)
@@ -105,7 +124,7 @@ enum SettingsScreenshotRenderer {
         NSApp.appearance = appearance
         defer { NSApp.appearance = previousAppearance }
 
-        for section in restorationFixture == nil ? sections : [.mapping] {
+        for section in restorationFixture == nil && macShortcutFixture == nil ? sections : [.mapping] {
             let rootView = SettingsView(
                 model: model,
                 updateInformation: updateInformation,
@@ -113,7 +132,7 @@ enum SettingsScreenshotRenderer {
                 initialShareSection: section == .statistics || section == .about
                     ? section
                     : nil,
-                initialMappingEditingButton: section == .mapping && opensShortcutEditor
+                initialMappingEditingButton: section == .mapping && (opensShortcutEditor || macShortcutFixture != nil)
                     ? .ok
                     : nil,
                 initialShortcutPickerShowsKeyboard: showsStandardKeyboard,

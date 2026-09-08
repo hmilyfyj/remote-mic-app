@@ -673,7 +673,8 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
         rc003VoiceExtensionTestEnabled: Bool =
             ProcessInfo.processInfo.arguments.contains("--rc003-voice-extension-test") ||
             (Bundle.main.object(forInfoDictionaryKey: "RC003VoiceExtensionTestEnabled") as? Bool == true),
-        recordingAssetStore: RecordingAssetStore = RecordingAssetStore()
+        recordingAssetStore: RecordingAssetStore = RecordingAssetStore(),
+        macShortcuts: MacShortcutsService = MacShortcutsService()
     ) {
         self.settings = settings
         self.privateFeature = privateFeature
@@ -683,6 +684,7 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
         self.transcriptArchiveStore = transcriptArchiveStore
         self.rc003VoiceExtensionTestEnabled = rc003VoiceExtensionTestEnabled
         self.recordingAssetStore = recordingAssetStore
+        self.macShortcuts = macShortcuts
         audioDevices = initialAudioDevices
         audioInputDevices = initialAudioInputDevices
         membershipAccessCancellable = membershipFeature.$buttonProfilesAccessDecision
@@ -4288,7 +4290,13 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
         ))
     }
 
-    private func performExternalConfiguredAction(_ configured: ConfiguredButtonAction) -> Bool {
+    let macShortcuts: MacShortcutsService
+
+    func performExternalConfiguredAction(_ configured: ConfiguredButtonAction) -> Bool {
+        if configured.action == .runMacShortcut {
+            Task { @MainActor [macShortcuts] in macShortcuts.run(configured.macShortcut) }
+            return true
+        }
         let applicationProfile = settings.customApplicationProfile(
             id: configured.applicationProfileID
         )

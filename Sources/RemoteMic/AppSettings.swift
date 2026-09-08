@@ -20,6 +20,7 @@ private struct PersonalizedConfiguration: Codable {
     let buttonBindings: [String: ButtonAction]
     let buttonShortcuts: [String: CustomKeyboardShortcut]
     let buttonApplicationProfileIDs: [String: UUID]?
+    let buttonMacShortcuts: [String: MacShortcut]?
     let secondaryButtonBindings: [String: [String: ConfiguredButtonAction]]
     let buttonRapidPressEnabled: [String: Bool]?
     let customApplicationProfiles: [CustomApplicationProfile]?
@@ -238,6 +239,7 @@ final class AppSettings: ObservableObject {
         static let buttonBindings = "buttonBindings"
         static let buttonShortcuts = "buttonShortcuts"
         static let buttonApplicationProfileIDs = "buttonApplicationProfileIDs"
+        static let buttonMacShortcuts = "buttonMacShortcuts"
         static let secondaryButtonBindings = "secondaryButtonBindings"
         static let buttonRapidPressEnabled = "buttonRapidPressEnabled"
         static let customApplicationProfiles = "customApplicationProfiles"
@@ -303,6 +305,16 @@ final class AppSettings: ObservableObject {
     @Published var buttonApplicationProfileIDs: [RemoteButton: UUID] {
         didSet {
             saveButtonApplicationProfileIDs()
+            saveSelectedRemoteProfileMappings()
+        }
+    }
+
+    @Published var buttonMacShortcuts: [RemoteButton: MacShortcut] {
+        didSet {
+            let raw = Dictionary(uniqueKeysWithValues: buttonMacShortcuts.map { ($0.key.rawValue, $0.value) })
+            if let data = try? JSONEncoder().encode(raw) {
+                defaults.set(data, forKey: Keys.buttonMacShortcuts)
+            }
             saveSelectedRemoteProfileMappings()
         }
     }
@@ -576,6 +588,12 @@ final class AppSettings: ObservableObject {
             buttonApplicationProfileIDs = [:]
         }
 
+        let savedMacShortcuts = defaults.data(forKey: Keys.buttonMacShortcuts)
+            .flatMap { try? JSONDecoder().decode([String: MacShortcut].self, from: $0) } ?? [:]
+        buttonMacShortcuts = Dictionary(uniqueKeysWithValues: savedMacShortcuts.compactMap { key, value in
+            RemoteButton(rawValue: key).map { ($0, value) }
+        })
+
         if
             let data = defaults.data(forKey: Keys.buttonRapidPressEnabled),
             let decoded = try? JSONDecoder().decode([String: Bool].self, from: data)
@@ -694,6 +712,7 @@ final class AppSettings: ObservableObject {
             buttonBindings: buttonBindings,
             buttonShortcuts: buttonShortcuts,
             buttonApplicationProfileIDs: buttonApplicationProfileIDs,
+            buttonMacShortcuts: buttonMacShortcuts,
             secondaryButtonBindings: secondaryButtonBindings,
             buttonRapidPressEnabled: buttonRapidPressEnabled
         )
@@ -714,6 +733,7 @@ final class AppSettings: ObservableObject {
                 }
                 buttonShortcuts = selected.mappings.parsedButtonShortcuts
                 buttonApplicationProfileIDs = selected.mappings.parsedButtonApplicationProfileIDs
+                buttonMacShortcuts = selected.mappings.parsedButtonMacShortcuts
                 secondaryButtonBindings = selected.mappings.parsedSecondaryButtonBindings
                 buttonRapidPressEnabled = selected.mappings.parsedButtonRapidPressEnabled
             }
@@ -928,7 +948,8 @@ final class AppSettings: ObservableObject {
             return ConfiguredButtonAction(
                 action: action(for: button),
                 shortcut: shortcut(for: button),
-                applicationProfileID: applicationProfileID(for: button)
+                applicationProfileID: applicationProfileID(for: button),
+                macShortcut: buttonMacShortcuts[button]
             )
         }
         return secondaryButtonBindings[button]?[trigger] ?? .disabled
@@ -948,7 +969,8 @@ final class AppSettings: ObservableObject {
             return ConfiguredButtonAction(
                 action: bindings[button] ?? Self.defaultBindings[button] ?? .disabled,
                 shortcut: shortcuts[button],
-                applicationProfileID: profile.mappings.parsedButtonApplicationProfileIDs[button]
+                applicationProfileID: profile.mappings.parsedButtonApplicationProfileIDs[button],
+                macShortcut: profile.mappings.parsedButtonMacShortcuts[button]
             )
         }
         return profile.mappings.parsedSecondaryButtonBindings[button]?[trigger] ?? .disabled
@@ -970,6 +992,7 @@ final class AppSettings: ObservableObject {
         }
         buttonShortcuts = profile.mappings.parsedButtonShortcuts
         buttonApplicationProfileIDs = profile.mappings.parsedButtonApplicationProfileIDs
+        buttonMacShortcuts = profile.mappings.parsedButtonMacShortcuts
         secondaryButtonBindings = profile.mappings.parsedSecondaryButtonBindings
         buttonRapidPressEnabled = profile.mappings.parsedButtonRapidPressEnabled
         isLoadingRemoteProfile = false
@@ -1067,6 +1090,7 @@ final class AppSettings: ObservableObject {
             buttonBindings: buttonBindings,
             buttonShortcuts: buttonShortcuts,
             buttonApplicationProfileIDs: buttonApplicationProfileIDs,
+            buttonMacShortcuts: buttonMacShortcuts,
             secondaryButtonBindings: secondaryButtonBindings,
             buttonRapidPressEnabled: buttonRapidPressEnabled
         )
@@ -1102,7 +1126,8 @@ final class AppSettings: ObservableObject {
         bindings[trigger] = ConfiguredButtonAction(
             action: action,
             shortcut: shortcut,
-            applicationProfileID: applicationProfileID
+            applicationProfileID: applicationProfileID,
+            macShortcut: bindings[trigger]?.macShortcut
         )
         secondaryButtonBindings[button] = bindings.isEmpty ? nil : bindings
     }
@@ -1122,6 +1147,16 @@ final class AppSettings: ObservableObject {
         binding.applicationProfileID = applicationProfileID
         bindings[trigger] = binding
         secondaryButtonBindings[button] = bindings
+    }
+
+    func setMacShortcut(_ shortcut: MacShortcut?, for button: RemoteButton, trigger: ButtonTrigger) {
+        if trigger == .singleClick {
+            buttonMacShortcuts[button] = shortcut
+        } else {
+            var binding = configuredAction(for: button, trigger: trigger)
+            binding.macShortcut = shortcut
+            secondaryButtonBindings[button, default: [:]][trigger] = binding
+        }
     }
 
     func setShortcut(
@@ -1165,6 +1200,7 @@ final class AppSettings: ObservableObject {
         buttonShortcuts = [:]
         buttonApplicationProfileIDs = [:]
         secondaryButtonBindings = [:]
+        buttonMacShortcuts = [:]
         buttonRapidPressEnabled = [:]
         if experimentalContinuousRecordingEnabled {
             continuousRecordingPowerBindingBackup = ConfiguredButtonAction(
@@ -1464,6 +1500,7 @@ final class AppSettings: ObservableObject {
             Keys.buttonBindings,
             Keys.buttonShortcuts,
             Keys.buttonApplicationProfileIDs,
+            Keys.buttonMacShortcuts,
             Keys.secondaryButtonBindings,
             Keys.customApplicationProfiles,
             Keys.peripheralIdentifier,
@@ -1492,6 +1529,9 @@ final class AppSettings: ObservableObject {
             ),
             buttonApplicationProfileIDs: Dictionary(
                 uniqueKeysWithValues: buttonApplicationProfileIDs.map { ($0.key.rawValue, $0.value) }
+            ),
+            buttonMacShortcuts: Dictionary(
+                uniqueKeysWithValues: buttonMacShortcuts.map { ($0.key.rawValue, $0.value) }
             ),
             secondaryButtonBindings: Dictionary(
                 uniqueKeysWithValues: secondaryButtonBindings.map { button, bindings in
@@ -1587,6 +1627,9 @@ final class AppSettings: ObservableObject {
         buttonBindings = Self.defaultBindings.merging(importedBindings) { _, imported in imported }
         buttonShortcuts = importedShortcuts
         buttonApplicationProfileIDs = importedApplicationProfileIDs
+        buttonMacShortcuts = Dictionary(uniqueKeysWithValues: (configuration.buttonMacShortcuts ?? [:]).compactMap { key, value in
+            RemoteButton(rawValue: key).map { ($0, value) }
+        })
         secondaryButtonBindings = importedSecondaryBindings
         buttonRapidPressEnabled = importedRapidPressEnabled
         customApplicationProfiles = configuration.customApplicationProfiles ?? []
@@ -1670,6 +1713,7 @@ final class AppSettings: ObservableObject {
             buttonBindings: buttonBindings,
             buttonShortcuts: buttonShortcuts,
             buttonApplicationProfileIDs: buttonApplicationProfileIDs,
+            buttonMacShortcuts: buttonMacShortcuts,
             secondaryButtonBindings: secondaryButtonBindings,
             buttonRapidPressEnabled: buttonRapidPressEnabled
         )
@@ -1718,6 +1762,7 @@ final class AppSettings: ObservableObject {
             )
             setAction(restored.action, for: .power, trigger: .singleClick)
             setShortcut(restored.shortcut, for: .power, trigger: .singleClick)
+            setMacShortcut(restored.macShortcut, for: .power, trigger: .singleClick)
             setApplicationProfileID(
                 restored.applicationProfileID,
                 for: .power,

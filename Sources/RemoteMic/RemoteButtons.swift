@@ -273,19 +273,27 @@ enum ButtonTrigger: String, CaseIterable, Codable, Identifiable {
     }
 }
 
+struct MacShortcut: Codable, Equatable, Identifiable, Sendable {
+    let id: UUID
+    let name: String
+}
+
 struct ConfiguredButtonAction: Codable, Equatable {
     var action: ButtonAction
     var shortcut: CustomKeyboardShortcut?
     var applicationProfileID: UUID?
+    var macShortcut: MacShortcut?
 
     init(
         action: ButtonAction,
         shortcut: CustomKeyboardShortcut?,
-        applicationProfileID: UUID? = nil
+        applicationProfileID: UUID? = nil,
+        macShortcut: MacShortcut? = nil
     ) {
         self.action = action
         self.shortcut = shortcut
         self.applicationProfileID = applicationProfileID
+        self.macShortcut = macShortcut
     }
 
     static let disabled = ConfiguredButtonAction(action: .disabled, shortcut: nil)
@@ -484,6 +492,7 @@ enum ButtonAction: String, CaseIterable, Codable, Identifiable {
     case customShortcut
     case focusInput
     case openCustomApplication
+    case runMacShortcut
     case toggleLongRecording
     case openRemoteMic
     case openCodex
@@ -538,6 +547,7 @@ enum ButtonAction: String, CaseIterable, Codable, Identifiable {
         case .customShortcut: return localization.text("action.custom_shortcut")
         case .focusInput: return localization.text("action.focus_input")
         case .openCustomApplication: return localization.text("action.open_custom_application")
+        case .runMacShortcut: return localization.text("action.run_mac_shortcut")
         case .toggleLongRecording: return localization.text("action.toggle_long_recording")
         case .openRemoteMic: return localization.text("action.open_remote_mic")
         case .openCodex: return localization.text("action.open_codex")
@@ -586,7 +596,7 @@ enum ButtonAction: String, CaseIterable, Codable, Identifiable {
         case .showDesktop, .contextMenu, .appSwitcher, .volumeUp, .volumeDown, .volumeMute,
              .playPause, .previousCommandLeft, .nextCommandRight, .toggleLongRecording:
             return .systemAndMedia
-        case .customShortcut, .focusInput, .openCustomApplication:
+        case .customShortcut, .focusInput, .openCustomApplication, .runMacShortcut:
             return .custom
         case .openRemoteMic, .openCodex, .openClaude, .openCmux, .openWeChat, .openCursor,
              .openXcode, .openSlack, .openWeCom, .openNeteaseMusic, .openChrome, .openSafari,
@@ -600,6 +610,7 @@ enum ButtonAction: String, CaseIterable, Codable, Identifiable {
             .customShortcut,
             .focusInput,
             .openCustomApplication,
+            .runMacShortcut,
             .commandReturn,
             .shiftReturn,
             .commandCopy,
