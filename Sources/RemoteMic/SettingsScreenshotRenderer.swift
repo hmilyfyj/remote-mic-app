@@ -67,6 +67,23 @@ enum SettingsScreenshotRenderer {
         let settings = AppSettings(defaults: defaults)
         settings.applicationLanguage = language
         settings.completeOnboarding()
+        let restorationFixture = ProcessInfo.processInfo.environment[
+            "REMOTE_MIC_SETTINGS_SCREENSHOT_MICROPHONE_RESTORE"
+        ]
+        var inputDevices: [AudioDeviceInfo] = []
+        if let restorationFixture {
+            settings.customMappingEnabled = true
+            settings.sourceMicrophoneSwitchingEnabled = true
+            settings.selectedAudioDeviceUID = "MiRemoteV2ch_UID"
+            settings.sourceMicrophoneRestoreMode = restorationFixture == "previous" ? .previous : .specified
+            settings.sourceMicrophoneRestoreDeviceUID = restorationFixture == "missing" ? "offline" : "usb"
+            settings.setSourceMicrophoneRestoreDelay(2)
+            inputDevices = [
+                .init(id: 1, uid: "built_in", name: "MacBook Pro Microphone"),
+                .init(id: 2, uid: "usb", name: "USB Microphone"),
+                .init(id: 3, uid: "MiRemoteV2ch_UID", name: "MiRemoteV 2ch"),
+            ]
+        }
         if opensShortcutEditor {
             settings.customMappingEnabled = true
             settings.setAction(.customShortcut, for: .ok, trigger: .singleClick)
@@ -76,7 +93,26 @@ enum SettingsScreenshotRenderer {
                 trigger: .singleClick
             )
         }
-        let model = BridgeAppModel(settings: settings)
+        let macShortcutFixture = ProcessInfo.processInfo.environment["REMOTE_MIC_SETTINGS_SCREENSHOT_MAC_SHORTCUT"]
+        let shortcutService: MacShortcutsService
+        if let macShortcutFixture {
+            let fixture = MacShortcut(id: UUID(uuidString: "11111111-1111-4111-8111-111111111111")!, name: "Start work / 开始工作")
+            settings.customMappingEnabled = true
+            settings.setAction(.runMacShortcut, for: .ok, trigger: .singleClick)
+            settings.setMacShortcut(fixture, for: .ok, trigger: .singleClick)
+            shortcutService = MacShortcutsService { _, _ in
+                if macShortcutFixture == "error" { throw MacShortcutsError.unavailable }
+                if macShortcutFixture == "missing" { return Data() }
+                return Data("""
+                Start work / 开始工作 (11111111-1111-4111-8111-111111111111)
+                Focus / 专注 (22222222-2222-4222-8222-222222222222)
+                """.utf8)
+            }
+            Task { await shortcutService.refresh() }
+        } else {
+            shortcutService = MacShortcutsService()
+        }
+        let model = BridgeAppModel(settings: settings, initialAudioInputDevices: inputDevices, macShortcuts: shortcutService)
         let updateInformation = UpdateInformationStore()
         let localization = LocalizationStore(settings: settings)
         model.privateFeature.updateLocaleIdentifier(localization.locale.identifier)
@@ -88,7 +124,7 @@ enum SettingsScreenshotRenderer {
         NSApp.appearance = appearance
         defer { NSApp.appearance = previousAppearance }
 
-        for section in sections {
+        for section in restorationFixture == nil && macShortcutFixture == nil ? sections : [.mapping] {
             let rootView = SettingsView(
                 model: model,
                 updateInformation: updateInformation,
@@ -96,10 +132,11 @@ enum SettingsScreenshotRenderer {
                 initialShareSection: section == .statistics || section == .about
                     ? section
                     : nil,
-                initialMappingEditingButton: section == .mapping && opensShortcutEditor
+                initialMappingEditingButton: section == .mapping && (opensShortcutEditor || macShortcutFixture != nil)
                     ? .ok
                     : nil,
                 initialShortcutPickerShowsKeyboard: showsStandardKeyboard,
+                initialMappingShowsVoiceSettings: restorationFixture != nil,
                 minimumContentSize: .zero
             )
             .environmentObject(localization)

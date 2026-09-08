@@ -551,6 +551,50 @@ check(
     "Typeless Fn tap session buffers pre-roll and stops after drain"
 )
 
+let sourceMicrophoneSuiteName = "RemoteMicSelfTest.sourceMicrophone.\(UUID().uuidString)"
+var sourceVoiceMappings: [HIDUsageMapping] = []
+let verifiedSourceMapper = RemoteVoiceFunctionMapper(serviceProvider: {
+    [RemoteVoiceMappingService(
+        registryID: 448,
+        readMappings: { sourceVoiceMappings },
+        setMappings: { sourceVoiceMappings = $0; return true }
+    )]
+})
+check(
+    verifiedSourceMapper.apply(neutralizeVoiceKey: true, verifyVoiceKeyNeutralization: true) &&
+        verifiedSourceMapper.isVoiceKeyNeutralized,
+    "source microphone mapping verifies neutral F5 through readback"
+)
+let unverifiedSourceMapper = RemoteVoiceFunctionMapper(serviceProvider: {
+    [RemoteVoiceMappingService(registryID: 449, readMappings: { [] }, setMappings: { _ in true })]
+})
+check(
+    !unverifiedSourceMapper.apply(neutralizeVoiceKey: true, verifyVoiceKeyNeutralization: true) &&
+        !unverifiedSourceMapper.isVoiceKeyNeutralized,
+    "source microphone mapping rejects successful writes without neutral readback"
+)
+if let defaults = UserDefaults(suiteName: sourceMicrophoneSuiteName) {
+    let missing = AppSettings(defaults: defaults)
+    check(!missing.sourceMicrophoneSwitchingEnabled, "source microphone switch defaults off when missing")
+    missing.sourceMicrophoneSwitchingEnabled = false
+    check(!AppSettings(defaults: defaults).sourceMicrophoneSwitchingEnabled, "source microphone explicit off persists")
+    missing.sourceMicrophoneSwitchingEnabled = true
+    check(AppSettings(defaults: defaults).sourceMicrophoneSwitchingEnabled, "source microphone opt-in persists")
+    missing.sourceMicrophoneRecovery = .init(previousUID: "original", targetUID: "virtual")
+    missing.sourceMicrophoneSwitchingEnabled = false
+    let disabled = AppSettings(defaults: defaults)
+    check(
+        !disabled.sourceMicrophoneSwitchingEnabled &&
+            disabled.sourceMicrophoneRecovery == .init(previousUID: "original", targetUID: "virtual"),
+        "source microphone disabled after use retains unfinished recovery"
+    )
+    disabled.sourceMicrophoneRecovery = nil
+    check(AppSettings(defaults: defaults).sourceMicrophoneRecovery == nil, "source microphone recovery clears after restore")
+    defaults.removePersistentDomain(forName: sourceMicrophoneSuiteName)
+} else {
+    check(false, "source microphone settings storage")
+}
+
 print("RESULT passed=\(passed) failed=\(failed)")
 if failed > 0 {
     exit(1)

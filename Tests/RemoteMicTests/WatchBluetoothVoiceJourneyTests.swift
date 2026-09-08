@@ -1,10 +1,13 @@
 import Foundation
 import Testing
+#if !REMOTE_MIC_LOCAL_ONLY
 @testable import SayAllMacRemoteCore
+#endif
 @testable import RemoteMic
 
 @Suite("Apple Watch BLE voice journey")
 struct WatchBluetoothVoiceJourneyTests {
+    #if !REMOTE_MIC_LOCAL_ONLY
     @Test func firstVoiceAttemptWaitsForMacPreparationBeforeVoiceReady() throws {
         let server = WatchBluetoothRemoteServer()
         var macVoicePrepared = false
@@ -35,6 +38,8 @@ struct WatchBluetoothVoiceJourneyTests {
         #expect(bridgeSource.contains("MOBILE VOICE audio_summary source="))
         #expect(bridgeSource.contains("accepted=\\(accepted)"))
     }
+
+    #endif
 
     @Test func sameWatchCanRestartAfterStopBeginsWithoutBeingReportedBusy() {
         #expect(MobileVoiceRestartPolicy.startDisposition(

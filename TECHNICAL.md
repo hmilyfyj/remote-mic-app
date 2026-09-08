@@ -130,6 +130,19 @@ RC003 的语音键以键盘 F5（usage page `0x07`、usage `0x3E`）出现。`Re
 
 ## 构建与测试
 
+仅使用 Mac 实体遥控器时，可设置 `REMOTE_MIC_LOCAL_ONLY=1`。该构建排除
+`sayall-mac-remote` 私有依赖及 iPhone、Apple Watch、Web 连接服务和入口，保留
+Mac 蓝牙/HID、虚拟音频与按键功能。首次引导仅提供实体遥控器路径。
+
+```bash
+REMOTE_MIC_LOCAL_ONLY=1 xcrun swift build
+REMOTE_MIC_LOCAL_ONLY=1 xcrun swift test
+REMOTE_MIC_LOCAL_ONLY=1 ./scripts/test.sh
+```
+
+该变量是构建选项，运行时无需设置。未设置时沿用完整版本的依赖与功能。
+本地编译验证与可分发安装包的签名、公证要求分别执行。
+
 开发构建：
 
 ```bash

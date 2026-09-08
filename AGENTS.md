@@ -142,3 +142,10 @@
 - Web 前端和公网中继服务已分别由独立私有仓库维护；本仓库不得重新创建 `Apps/MobileWeb/` 或 Web/服务端专属 CI。
 - 本仓库继续维护 Mac 端的 Web 会话客户端、协议解析、批准流程、按键执行、音频接收和发布配置，不得因源码拆分改变这些现有行为。
 - 修改 Web 协议时必须保持已发布 Mac 版本兼容，并在前端、服务端和本仓库分别完成对应测试；生产域名、服务器、证书和凭据仍不得进入 Git。
+
+## Trellis 开发入口
+
+- 项目已接入 Trellis 0.6.16，使用与维护见 [TRELLIS.md](TRELLIS.md)。Codex 新会话使用 `$trellis-start` 读取当前任务和规范。
+- 本文、现有权威规范与用户当前授权优先于通用 Trellis 模板；开发委托可作为任务创建和常规实现的授权。
+- `.trellis/spec/frontend/` 对应 SwiftUI，`.trellis/spec/backend/` 对应 Mac 核心逻辑；先读各 index.md，再按范围加载详细规则。
+- `.trellis/tasks/`、`.trellis/workspace/`、身份和运行状态保留本地，自动提交关闭。详细研究与完整计划继续遵守上面的私有仓库存放规则。

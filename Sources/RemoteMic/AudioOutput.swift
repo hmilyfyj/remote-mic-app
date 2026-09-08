@@ -402,6 +402,11 @@ final class VirtualAudioOutput {
 
     @discardableResult
     func configure(deviceUID: String) -> Bool {
+        if selectedDevice?.uid == deviceUID, !isConfigurationHealthy,
+           pendingVoiceBufferCountForDiagnostics == 0, restartSelectedOutput() {
+            AppLogger.shared.write("AUDIO CONFIGURE reused_existing_output=true")
+            return true
+        }
         let previousState = diagnosticState()
         stop()
         guard !deviceUID.isEmpty else {
@@ -487,6 +492,74 @@ final class VirtualAudioOutput {
 
     var isReadyForTestTone: Bool {
         isConfigurationHealthy
+    }
+
+    private func restartSelectedOutput() -> Bool {
+        guard let engine, let player, let selectedDevice,
+              pendingVoiceBufferCountForDiagnostics == 0 else { return false }
+        player.stop()
+        engine.stop()
+        do {
+            try engine.outputNode.auAudioUnit.setDeviceID(selectedDevice.id)
+            try engine.start()
+            guard AudioPlayerNodeSafety.play(player) else {
+                AppLogger.shared.write("AUDIO OUTPUT_RESTART result=player_start_failed")
+                return false
+            }
+            return true
+        } catch {
+            AppLogger.shared.write("AUDIO OUTPUT_RESTART result=failed " + AppLogger.errorFields(error))
+            return false
+        }
+    }
+
+    /// Default-input changes can asynchronously reset AVAudioEngine's explicit output binding.
+    /// Only restart between deliveries; the session controller retains incoming PCM until ready.
+    func waitForOutputAfterInputChange(completion: @escaping (Bool) -> Void) -> () -> Void {
+        let started = ProcessInfo.processInfo.systemUptime
+        let generation = engineConfigurationGeneration
+        var finished = false
+        var stableSince: TimeInterval?
+        var attempts = 0
+        AppLogger.shared.write("AUDIO ROUTE_SETTLE phase=requested generation=\(generation)")
+        func complete(_ ready: Bool, reason: String) {
+            finished = true
+            let elapsed = Int((ProcessInfo.processInfo.systemUptime - started) * 1000)
+            AppLogger.shared.write("AUDIO ROUTE_SETTLE phase=completed generation=\(generation) result=\(reason) attempts=\(attempts) elapsed_ms=\(elapsed)")
+            completion(ready)
+        }
+        func check() {
+            guard !finished else { return }
+            let now = ProcessInfo.processInfo.systemUptime
+            guard self.engineConfigurationGeneration == generation,
+                  self.pendingVoiceBufferCountForDiagnostics == 0,
+                  self.engine != nil, self.player != nil, self.selectedDevice != nil,
+                  now - started < 1 else {
+                complete(false, reason: "unavailable")
+                return
+            }
+            if self.isConfigurationHealthy {
+                if let stableSince, now - stableSince >= 0.15 {
+                    complete(true, reason: "ready")
+                    return
+                }
+                if stableSince == nil { stableSince = now }
+            } else {
+                stableSince = nil
+                attempts += 1
+                if !self.restartSelectedOutput() {
+                    complete(false, reason: "restart_failed")
+                    return
+                }
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.025, execute: check)
+        }
+        check()
+        return {
+            guard !finished else { return }
+            finished = true
+            AppLogger.shared.write("AUDIO ROUTE_SETTLE phase=completed generation=\(generation) result=cancelled attempts=\(attempts)")
+        }
     }
 
     /// Schedules the test tone and reports actual playback completion via `scheduleBuffer`'s

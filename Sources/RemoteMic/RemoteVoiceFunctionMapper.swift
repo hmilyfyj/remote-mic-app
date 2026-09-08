@@ -140,7 +140,8 @@ final class RemoteVoiceFunctionMapper {
     @discardableResult
     func apply(
         suppressPowerKey: Bool = false,
-        neutralizeVoiceKey: Bool = false
+        neutralizeVoiceKey: Bool = false,
+        verifyVoiceKeyNeutralization: Bool = false
     ) -> Bool {
         let services = serviceProvider()
         let matchedCount = services.count
@@ -215,6 +216,17 @@ final class RemoteVoiceFunctionMapper {
                 continue
             }
             appliedIndices.append(index)
+            if neutralizeVoiceKey, verifyVoiceKeyNeutralization,
+               !service.readMappings().contains(RemoteVoiceFunctionMappingPolicy.neutralRemoteVoiceKey) {
+                rollback(
+                    services: services,
+                    snapshots: snapshots,
+                    appliedIndices: appliedIndices,
+                    newlyStoredRegistryIDs: newlyStoredRegistryIDs,
+                    matchedCount: matchedCount
+                )
+                return false
+            }
             if let locationID = service.locationID {
                 appliedCountsByLocation[locationID, default: 0] += 1
             }

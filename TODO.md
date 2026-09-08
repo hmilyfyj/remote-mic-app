@@ -1,5 +1,17 @@
 # TODO
 
+- [x] 接入 Trellis 开发流程
+  - 2026-09-08：安装官方 0.6.16 Codex 工具与 Swift/macOS spec，入口见 `TRELLIS.md`。任务、身份与日志保持本地，自动提交关闭；任务生命周期、hooks、配置和仓库边界检查已通过。
+
+- [ ] 普通遥控按键直接运行 Mac 快捷指令
+  - 2026-09-08：新增中英文“运行 Mac 快捷指令”动作，页面内搜索、选择、刷新和测试；按系统标识绑定，支持单击、双击、长按、独立设备配置及导入导出。
+  - 运行状态、重复触发保护、读取及执行超时已经实现。仅调用系统公开接口，执行结果内容丢弃。自动化、截图与真实遥控器验收边界见 `Testing/MacShortcuts.md`。
+
+- [ ] 按语音触发来源切换麦克风，支持恢复原输入或指定设备及可调延迟
+  - 2026-09-06 增加恢复模式、输入设备列表及 0–10 秒延迟设置；默认恢复本次会话开始前的输入、延迟 0 秒。设置按会话保存，设备离线优先回退原输入，手动切换保留新选择，等待期间的新语音提前结束等待。详见 `Testing/SourceMicrophoneSwitching.md` 的恢复设置验收。
+  - macOS 本地候选默认关闭，首版限定 RC003、MiRemoteV 2ch 和 Fn 长按/点按；包含设备切换确认、尾音排空、下一段有界缓存、用户换麦保护和异常恢复记录。
+  - 会话控制、Fn 来源策略和配置自检已覆盖；`REMOTE_MIC_LOCAL_ONLY=1` 可排除移动端私有依赖，Mac 本地构建与完整 Swift 测试已通过。系统音频、真实 Fn 与第三方文字上屏仍待验收。步骤和兼容性边界见 [`Testing/SourceMicrophoneSwitching.md`](Testing/SourceMicrophoneSwitching.md)。
+
 - [x] 统一 SayAll 品牌、官网与当前上架战略
   - App 英文名称统一为 `SayAll`，中文名称继续使用“无线麦”，官网统一为 `https://sayall.app`。
   - 2026-08-17 补齐发布产物名称层：canonical bundle 与安装目标统一为 `SayAll.app`，英文显示 SayAll、简中显示无线麦；`RemoteMic` 可执行文件、`com.hd838a.RemoteMic` Bundle ID 和 `Remote-Mic-*` 发布资产文件名继续保持兼容。安装器仅在 Bundle ID 匹配且新 App 已验证后，把旧 `Remote Mic.app` / `无线麦.app` 移到目标卷对应的废纸篓；Trash 不可用时保留旧 App。

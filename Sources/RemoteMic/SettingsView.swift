@@ -2,8 +2,10 @@ import AppKit
 import Charts
 import Combine
 import CoreBluetooth
+#if !REMOTE_MIC_LOCAL_ONLY
 import SayAllMacRemoteCore
 import SayAllMacRemoteUI
+#endif
 #if canImport(SayAllSiriRemote)
 import SayAllSiriRemote
 #endif
@@ -55,7 +57,9 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     }
 }
 
+#if !REMOTE_MIC_LOCAL_ONLY
 extension BridgeAppModel: WebRemoteSessionModel {}
+#endif
 
 private enum PermissionVisualState {
     case granted
@@ -186,6 +190,7 @@ struct SettingsView: View {
     private let setDockIconVisible: (Bool) -> Void
     private let minimumContentSize: CGSize
     private let initialShortcutPickerShowsKeyboard: Bool
+    private let initialMappingShowsVoiceSettings: Bool
     private static let sidebarSectionOrder: [SettingsSection] = [
         .mapping,
         .macros,
@@ -239,6 +244,7 @@ struct SettingsView: View {
         initialMappingEditingButton: RemoteButton? = nil,
         initialMappingEditingTrigger: ButtonTrigger = .singleClick,
         initialShortcutPickerShowsKeyboard: Bool = false,
+        initialMappingShowsVoiceSettings: Bool = false,
         minimumContentSize: CGSize = CGSize(width: 980, height: 732)
     ) {
         self.model = model
@@ -254,6 +260,7 @@ struct SettingsView: View {
         self.setDockIconVisible = setDockIconVisible
         self.minimumContentSize = minimumContentSize
         self.initialShortcutPickerShowsKeyboard = initialShortcutPickerShowsKeyboard
+        self.initialMappingShowsVoiceSettings = initialMappingShowsVoiceSettings
         _selectedSection = State(initialValue: initialSection)
         _expandedShareSection = State(initialValue: initialShareSection)
         _selectedRemoteButton = State(initialValue: initialMappingEditingButton ?? .ok)
@@ -316,6 +323,7 @@ struct SettingsView: View {
                 selectedSection = .about
             }
         }
+        #if !REMOTE_MIC_LOCAL_ONLY
         .sheet(isPresented: $isWebRemoteSessionPresented) {
             webRemoteSessionView
         }
@@ -348,6 +356,7 @@ struct SettingsView: View {
         } message: {
             Text("connection.web.invite.invalid_message")
         }
+        #endif
         .alert(
             localization.text("button_mapping.permission_prompt.title"),
             isPresented: $isMappingPermissionAlertPresented
@@ -366,6 +375,7 @@ struct SettingsView: View {
         }
     }
 
+    #if !REMOTE_MIC_LOCAL_ONLY
     private var webRemoteInviteSheet: some View {
         VStack(alignment: .leading, spacing: 20) {
             VStack(alignment: .leading, spacing: 16) {
@@ -464,6 +474,8 @@ struct SettingsView: View {
             )
         )
     }
+
+    #endif
 
     private var sidebar: some View {
         VStack(spacing: 0) {
@@ -643,7 +655,9 @@ struct SettingsView: View {
                     VStack(spacing: 14) {
                         audioSettingsPanel
                         audioCompatibilityPanel
+                        #if !REMOTE_MIC_LOCAL_ONLY
                         phoneConnectionsPanel
+                        #endif
                     }
                     .frame(maxWidth: .infinity, alignment: .topLeading)
                 }
@@ -651,6 +665,7 @@ struct SettingsView: View {
         }
     }
 
+    #if !REMOTE_MIC_LOCAL_ONLY
     private var phoneConnectionsPanel: some View {
         GlassPanel {
             VStack(alignment: .leading, spacing: 14) {
@@ -831,6 +846,8 @@ struct SettingsView: View {
             }
         }
     }
+
+    #endif
 
     private var connectionDevicePanel: some View {
         GlassPanel {
@@ -1178,11 +1195,20 @@ struct SettingsView: View {
                 }
                 .compatibilityScrollEdgeEffect()
                 .onAppear {
+                    if initialMappingShowsVoiceSettings {
+                        DispatchQueue.main.async {
+                            proxy.scrollTo("mapping-voice-settings", anchor: .top)
+                        }
+                        return
+                    }
                     guard let target = mappingEditingTarget else { return }
-                    let scrollTarget = settings.configuredAction(
+                    let editorAction = settings.configuredAction(
                         for: target.button,
                         trigger: target.trigger
-                    ).action == .customShortcut
+                    ).action
+                    let scrollTarget = editorAction == .runMacShortcut
+                        ? "mapping-mac-shortcut-editor"
+                        : editorAction == .customShortcut
                         ? "mapping-shortcut-editor-\(target.id)"
                         : "mapping-action-editor"
                     DispatchQueue.main.async {
@@ -1194,6 +1220,16 @@ struct SettingsView: View {
                     DispatchQueue.main.async {
                         withAnimation(.easeInOut(duration: 0.25)) {
                             proxy.scrollTo("mapping-action-editor", anchor: .top)
+                        }
+                    }
+                }
+                .onChange(of: mappingEditingTarget.map {
+                    settings.configuredAction(for: $0.button, trigger: $0.trigger).action
+                }) { action in
+                    guard action == .runMacShortcut else { return }
+                    DispatchQueue.main.async {
+                        withAnimation(.easeInOut(duration: 0.25)) {
+                            proxy.scrollTo("mapping-mac-shortcut-editor", anchor: .top)
                         }
                     }
                 }
@@ -1279,6 +1315,8 @@ struct SettingsView: View {
                 mappingVoiceKeyModeControl
                 Divider()
                 mappingVoiceFnTapControl
+                Divider()
+                mappingSourceMicrophoneControl
                 HStack {
                     Spacer(minLength: 0)
                     mappingRestoreDefaultsButton
@@ -1325,6 +1363,7 @@ struct SettingsView: View {
             .pickerStyle(.segmented)
             .labelsHidden()
             .controlSize(.small)
+            .disabled(settings.sourceMicrophoneSwitchingEnabled)
             Text("connection.voice_key_mode.help")
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)
@@ -1364,6 +1403,95 @@ struct SettingsView: View {
         .help(localization.text("connection.voice_fn_tap.hint"))
         .opacity(settings.voiceKeyMode == .function ? 1 : 0.55)
         .disabled(settings.voiceKeyMode != .function)
+    }
+
+    private var mappingSourceMicrophoneControl: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Toggle("audio.source_switch.enabled", isOn: Binding(
+                get: { settings.sourceMicrophoneSwitchingEnabled },
+                set: { model.setSourceMicrophoneSwitchingEnabled($0) }
+            ))
+            .font(.system(size: 12, weight: .medium))
+            .toggleStyle(.switch)
+            .disabled(settings.voiceKeyMode != .function)
+            Text("audio.source_switch.impact")
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            if settings.sourceMicrophoneSwitchingEnabled {
+                sourceMicrophoneRestoreControls
+                Text(model.sourceMicrophoneStatus.text(using: localization))
+                    .font(.system(size: 12))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .id("mapping-voice-settings")
+    }
+
+    private var sourceMicrophoneRestoreControls: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Picker("audio.source_switch.restore_mode", selection: $settings.sourceMicrophoneRestoreMode) {
+                Text("audio.source_switch.restore_previous").tag(SourceMicrophoneRestoreMode.previous)
+                Text("audio.source_switch.restore_specified").tag(SourceMicrophoneRestoreMode.specified)
+            }
+            .pickerStyle(.segmented)
+            .frame(maxWidth: 360)
+            .help(localization.text("audio.source_switch.restore_settings_help"))
+
+            if settings.sourceMicrophoneRestoreMode == .specified {
+                HStack {
+                    Text("audio.source_switch.restore_device")
+                    Spacer()
+                    Button { model.refreshAudioDevices() } label: {
+                        Image(systemName: "arrow.clockwise")
+                    }
+                    .help(localization.text("audio.action.refresh_devices"))
+                    .accessibilityLabel(Text("audio.action.refresh_devices"))
+                }
+                let devices = model.audioInputDevices.filter { $0.uid != settings.selectedAudioDeviceUID }
+                let hasMissingSelection = !settings.sourceMicrophoneRestoreDeviceUID.isEmpty &&
+                    !devices.contains(where: { $0.uid == settings.sourceMicrophoneRestoreDeviceUID })
+                ScrollView(.vertical, showsIndicators: true) {
+                    Picker("audio.source_switch.restore_device", selection: $settings.sourceMicrophoneRestoreDeviceUID) {
+                        Text("audio.source_switch.restore_device_none").tag("")
+                        ForEach(devices, id: \.uid) { device in
+                            Text(device.name).lineLimit(2).tag(device.uid)
+                        }
+                        if hasMissingSelection {
+                            Text("audio.source_switch.restore_device_offline").tag(settings.sourceMicrophoneRestoreDeviceUID)
+                        }
+                    }
+                    .pickerStyle(.radioGroup)
+                    .labelsHidden()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .frame(height: min(160, CGFloat(devices.count + 1 + (hasMissingSelection ? 1 : 0)) * 24))
+                if !devices.contains(where: { $0.uid == settings.sourceMicrophoneRestoreDeviceUID }) {
+                    Text("audio.source_switch.restore_device_fallback")
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            HStack(spacing: 8) {
+                Text("audio.source_switch.restore_delay")
+                Slider(value: sourceMicrophoneDelayBinding, in: 0...10, step: 0.1)
+                    .frame(maxWidth: 180)
+                    .accessibilityLabel(Text("audio.source_switch.restore_delay"))
+                TextField("audio.source_switch.restore_delay", value: sourceMicrophoneDelayBinding, format: .number.precision(.fractionLength(0...1)))
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 56)
+                    .multilineTextAlignment(.trailing)
+                Text("audio.source_switch.seconds")
+            }
+            .help(localization.text("audio.source_switch.restore_delay_help"))
+        }
+        .font(.system(size: 12))
+        .padding(.vertical, 6)
+    }
+
+    private var sourceMicrophoneDelayBinding: Binding<Double> {
+        Binding(get: { settings.sourceMicrophoneRestoreDelay }, set: { settings.setSourceMicrophoneRestoreDelay($0) })
     }
 
     private var mappingRestoreDefaultsButton: some View {
@@ -1618,8 +1746,19 @@ struct SettingsView: View {
                 )
             }
 
+            if configured.action == .runMacShortcut {
+                MacShortcutEditor(
+                    service: model.macShortcuts,
+                    localization: localization,
+                    selected: configured.macShortcut,
+                    onSelect: { settings.setMacShortcut($0, for: button, trigger: trigger) }
+                )
+                .id("mapping-mac-shortcut-editor")
+            }
+
             if trigger == .singleClick,
                configured.action != .disabled,
+               configured.action != .runMacShortcut,
                !configured.action.allowsRepeat {
                 mappingRapidPressControl(button: button)
             }
@@ -1733,7 +1872,7 @@ struct SettingsView: View {
                                         ? localization.text("common.suffix.experimental_disabled")
                                         : "")
                         )
-                        .lineLimit(1)
+                        .lineLimit(action == .runMacShortcut ? 2 : 1)
                         .truncationMode(.tail)
                         Spacer(minLength: 0)
                     }
@@ -2239,6 +2378,9 @@ struct SettingsView: View {
             return settings.customApplicationProfile(id: configured.applicationProfileID)?.displayName
                 ?? localization.text("custom_application.not_configured")
         }
+        if configured.action == .runMacShortcut {
+            return configured.macShortcut?.name ?? localization.text("mac_shortcuts.choose")
+        }
         switch configured.action {
         case .arrowUp: return "↑"
         case .arrowDown: return "↓"
@@ -2259,7 +2401,7 @@ struct SettingsView: View {
             current: .disabled,
             experimentalContinuousRecordingEnabled: settings.experimentalContinuousRecordingEnabled
         ).filter {
-            $0 != .disabled && $0 != .customShortcut && $0 != .openCustomApplication
+            $0 != .disabled && $0 != .customShortcut && $0 != .openCustomApplication && $0 != .runMacShortcut
         }
         return ButtonActionCategory.allCases.compactMap { category in
             let actions: [ButtonProfileHostAction] = availableActions
@@ -3418,6 +3560,7 @@ struct SettingsView: View {
         localization.text(model.isConnected ? "common.status.connected" : "common.status.connecting")
     }
 
+    #if !REMOTE_MIC_LOCAL_ONLY
     private var webRemoteStatusText: String {
         switch model.webRemoteState {
         case .disabled:
@@ -3495,6 +3638,8 @@ struct SettingsView: View {
         guard model.webRemoteState.isEnabled else { return }
         isWebRemoteSessionPresented = true
     }
+
+    #endif
 
     private var connectionTint: Color {
         model.isConnected ? .green : .orange

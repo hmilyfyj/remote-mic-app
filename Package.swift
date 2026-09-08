@@ -2,12 +2,10 @@
 import Foundation
 import PackageDescription
 
+let localOnly = ProcessInfo.processInfo.environment["REMOTE_MIC_LOCAL_ONLY"] == "1"
+let hostSwiftSettings: [SwiftSetting] = localOnly ? [.define("REMOTE_MIC_LOCAL_ONLY")] : []
 var packageDependencies: [Package.Dependency] = [
     .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.9.4"),
-    .package(
-        url: "https://github.com/GetSayAll/sayall-mac-remote.git",
-        revision: "7d1b3c2e1d88913bafaa3a401c939eb218a1f363"
-    ),
 ]
 var remoteMicDependencies: [Target.Dependency] = [
     "AudioExceptionGuard",
@@ -17,14 +15,24 @@ var remoteMicDependencies: [Target.Dependency] = [
     "AppleRemotePacketLogger",
     "SayAllMCPKit",
     .product(name: "Sparkle", package: "Sparkle"),
-    .product(name: "SayAllMacRemoteCore", package: "sayall-mac-remote"),
-    .product(name: "SayAllMacRemoteUI", package: "sayall-mac-remote"),
 ]
 var remoteMicTestDependencies: [Target.Dependency] = [
     "RemoteMic",
     "AppleRemoteAudioCore",
-    .product(name: "SayAllMacRemoteCore", package: "sayall-mac-remote"),
 ]
+if !localOnly {
+    packageDependencies.append(.package(
+        url: "https://github.com/GetSayAll/sayall-mac-remote.git",
+        revision: "7d1b3c2e1d88913bafaa3a401c939eb218a1f363"
+    ))
+    remoteMicDependencies += [
+        .product(name: "SayAllMacRemoteCore", package: "sayall-mac-remote"),
+        .product(name: "SayAllMacRemoteUI", package: "sayall-mac-remote"),
+    ]
+    remoteMicTestDependencies.append(
+        .product(name: "SayAllMacRemoteCore", package: "sayall-mac-remote")
+    )
+}
 let privateArtifactPackagePath = ProcessInfo.processInfo.environment[
     "SAYALL_PRIVATE_ARTIFACT_PACKAGE_PATH"
 ]
@@ -143,6 +151,7 @@ let package = Package(
             name: "RemoteMic",
             dependencies: remoteMicDependencies,
             path: "Sources/RemoteMic",
+            swiftSettings: hostSwiftSettings,
             linkerSettings: [
                 .linkedFramework("Network"),
             ]
@@ -209,7 +218,8 @@ let package = Package(
         .testTarget(
             name: "RemoteMicTests",
             dependencies: remoteMicTestDependencies + ["SayAllMCPKit", "AppleRemoteHCIProtocol"],
-            path: "Tests/RemoteMicTests"
+            path: "Tests/RemoteMicTests",
+            swiftSettings: hostSwiftSettings
         ),
     ],
     swiftLanguageModes: [.v5]

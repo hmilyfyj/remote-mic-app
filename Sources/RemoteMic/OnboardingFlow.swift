@@ -65,6 +65,22 @@ enum OnboardingRemoteAvailability: String, CaseIterable, Codable, Identifiable {
     case hasRemote = "has_remote"
     case noRemote = "no_remote"
 
+    static var availableChoices: [Self] {
+        #if REMOTE_MIC_LOCAL_ONLY
+        [.hasRemote]
+        #else
+        [.hasRemote, .noRemote]
+        #endif
+    }
+
+    static var selectionDetailKey: String {
+        #if REMOTE_MIC_LOCAL_ONLY
+        "onboarding.remote_availability.local_detail"
+        #else
+        "onboarding.remote_availability.detail"
+        #endif
+    }
+
     var id: String { rawValue }
 
     var titleKey: String {
