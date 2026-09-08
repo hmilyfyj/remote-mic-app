@@ -70,6 +70,11 @@ enum SettingsScreenshotRenderer {
         let restorationFixture = ProcessInfo.processInfo.environment[
             "REMOTE_MIC_SETTINGS_SCREENSHOT_MICROPHONE_RESTORE"
         ]
+        let voiceKeyFixture = ProcessInfo.processInfo.environment["REMOTE_MIC_SETTINGS_SCREENSHOT_VOICE_MODE"]
+        if let voiceKeyFixture, let mode = VoiceKeyMode(rawValue: voiceKeyFixture) {
+            settings.customMappingEnabled = true
+            settings.voiceKeyMode = mode
+        }
         var inputDevices: [AudioDeviceInfo] = []
         if let restorationFixture {
             settings.customMappingEnabled = true
@@ -124,7 +129,7 @@ enum SettingsScreenshotRenderer {
         NSApp.appearance = appearance
         defer { NSApp.appearance = previousAppearance }
 
-        for section in restorationFixture == nil && macShortcutFixture == nil ? sections : [.mapping] {
+        for section in restorationFixture == nil && macShortcutFixture == nil && voiceKeyFixture == nil ? sections : [.mapping] {
             let rootView = SettingsView(
                 model: model,
                 updateInformation: updateInformation,
@@ -136,7 +141,7 @@ enum SettingsScreenshotRenderer {
                     ? .ok
                     : nil,
                 initialShortcutPickerShowsKeyboard: showsStandardKeyboard,
-                initialMappingShowsVoiceSettings: restorationFixture != nil,
+                initialMappingShowsVoiceSettings: restorationFixture != nil || voiceKeyFixture != nil,
                 minimumContentSize: .zero
             )
             .environmentObject(localization)

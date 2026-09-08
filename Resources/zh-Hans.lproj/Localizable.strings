@@ -933,3 +933,7 @@
 "mac_shortcuts.timed_out" = "运行超过 2 分钟，请先检查快捷指令再重试；已完成的操作仍然生效。";
 "mac_shortcuts.unavailable" = "无法启动快捷指令，请打开快捷指令 App 后重试。";
 "mac_shortcuts.missing" = "此快捷指令在本机不可用，请刷新或重新选择。";
+
+"connection.voice_key.mode.microphone_only" = "仅麦克风";
+"connection.voice_key_mode.microphone_only_help" = "按住语音键使用麦克风，松开结束。请在录音软件中选择虚拟麦克风，并自行开始录音。";
+"voice_button.status.microphone_only_enabled" = "仅麦克风已就绪，语音键只传输音频";

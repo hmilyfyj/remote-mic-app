@@ -1358,17 +1358,18 @@ struct SettingsView: View {
             )) {
                 ForEach(VoiceKeyMode.allCases) { mode in
                     Text(LocalizedStringKey(mode.localizationKey)).tag(mode)
+                        .disabled(settings.sourceMicrophoneSwitchingEnabled && !mode.supportsSourceMicrophoneSwitching)
                 }
             }
             .pickerStyle(.segmented)
             .labelsHidden()
             .controlSize(.small)
-            .disabled(settings.sourceMicrophoneSwitchingEnabled)
-            Text("connection.voice_key_mode.help")
+            Text(settings.voiceKeyMode == .microphoneOnly
+                 ? "connection.voice_key_mode.microphone_only_help" : "connection.voice_key_mode.help")
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)
                 .lineLimit(3)
-            if settings.voiceKeyMode != .function {
+            if settings.voiceKeyMode.requiresAccessibility {
                 Label {
                     Text("connection.voice_key_mode.unverified")
                         .font(.system(size: 12, weight: .medium))
@@ -1413,7 +1414,7 @@ struct SettingsView: View {
             ))
             .font(.system(size: 12, weight: .medium))
             .toggleStyle(.switch)
-            .disabled(settings.voiceKeyMode != .function)
+            .disabled(!settings.voiceKeyMode.supportsSourceMicrophoneSwitching)
             Text("audio.source_switch.impact")
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)

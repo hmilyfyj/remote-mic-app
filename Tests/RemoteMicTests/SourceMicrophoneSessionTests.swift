@@ -136,6 +136,80 @@ private final class MicrophoneHarness {
 }
 
 struct SourceMicrophoneSessionTests {
+    @Test func microphoneOnlyQueuesSecondHoldAndNeverInjectsKeysOnShutdown() {
+        let h = MicrophoneHarness()
+        h.start(mode: .microphoneOnly)
+        h.controller.receive([1, 2], device: h.remote)
+        h.controller.stop(device: h.remote)
+        h.start(mode: .microphoneOnly)
+        h.controller.receive([3, 4], device: h.remote)
+        h.completePlayback()
+        #expect(h.audio == [1, 2, 3, 4])
+        #expect(h.fn.isEmpty)
+        h.controller.stop(device: h.remote)
+        h.completePlayback()
+        #expect(h.results == ["completed", "completed"])
+        #expect(h.interrupted == 0)
+        h.start(mode: .microphoneOnly)
+        h.controller.shutdown()
+        #expect(h.fn.isEmpty)
+        #expect(h.input == "built_in")
+    }
+
+    @Test func microphoneOnlyOutputFailureAndStaleReadyNeverInjectKeys() {
+        let h = MicrophoneHarness()
+        h.waitForOutput = true
+        h.start(mode: .microphoneOnly)
+        let stale = h.outputReady
+        h.controller.receive([1], device: h.remote)
+        h.outputReady?(false)
+        h.outputReady?(true)
+        stale?(true)
+        #expect(h.fn.isEmpty)
+        #expect(h.audio.isEmpty)
+        #expect(h.results == ["output_not_ready"])
+    }
+
+    @Test(arguments: [false, true]) func microphoneOnlyPreservesAudioAndRestoreWithoutKeys(earlyRelease: Bool) {
+        let h = MicrophoneHarness()
+        h.waitForOutput = true
+        h.waitForDestination = true
+        h.restoration = .init(preferredUID: "usb", delay: 2)
+        h.start(mode: .microphoneOnly)
+        h.controller.receive([11, 12], device: h.remote)
+        if earlyRelease { h.controller.stop(device: h.remote) }
+        h.outputReady?(true)
+        #expect(h.destination == nil)
+        #expect(h.fn.isEmpty)
+        #expect(h.audio == [11, 12])
+        if !earlyRelease {
+            h.controller.receive([13], device: h.remote)
+            h.controller.stop(device: h.remote)
+        }
+        h.completePlayback()
+        #expect(h.controller.phase == .cooldown)
+        #expect(h.input == "virtual")
+        h.advance(2.1)
+        h.outputReady?(true)
+        #expect(h.input == "usb")
+        #expect(h.fn.isEmpty)
+        #expect(h.audio == (earlyRelease ? [11, 12] : [11, 12, 13]))
+        #expect(h.interrupted == 0)
+        #expect(h.results == ["completed"])
+    }
+
+    @Test(arguments: ["disconnect", "audio_interrupted", "system_suspended"])
+    func microphoneOnlyCancellationNeverInjectsKeys(reason: String) {
+        let h = MicrophoneHarness()
+        h.start(mode: .microphoneOnly)
+        h.controller.receive([1, 2], device: h.remote)
+        h.controller.cancel(reason: reason)
+        h.advance(0.3)
+        #expect(h.fn.isEmpty)
+        #expect(h.input == "built_in")
+        #expect(h.results == [reason])
+    }
+
     @Test func slowRouteStartsFirstHoldAndPreservesBothSessions() {
         let h = MicrophoneHarness()
         h.routeReadyDelay = 1.2
