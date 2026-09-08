@@ -1353,7 +1353,7 @@ struct SettingsView: View {
             Text("connection.voice_key_mode.title")
                 .font(.system(size: 12, weight: .medium))
             Picker("connection.voice_key_mode.title", selection: Binding(
-                get: { settings.voiceKeyMode },
+                get: { model.pendingVoiceKeyMode ?? settings.voiceKeyMode },
                 set: { model.setVoiceKeyMode($0) }
             )) {
                 ForEach(VoiceKeyMode.allCases) { mode in
@@ -1364,6 +1364,20 @@ struct SettingsView: View {
             .pickerStyle(.segmented)
             .labelsHidden()
             .controlSize(.small)
+            if let pendingMode = model.pendingVoiceKeyMode {
+                Text(LocalizedMessage("connection.voice_key_mode.pending", arguments: [
+                    localization.text(settings.voiceKeyMode.localizationKey),
+                    localization.text(pendingMode.localizationKey)
+                ]).text(using: localization))
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.orange)
+                .fixedSize(horizontal: false, vertical: true)
+            } else if model.voiceKeyModeChangeFailed {
+                Text("connection.voice_key_mode.change_failed")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             Text(settings.voiceKeyMode == .microphoneOnly
                  ? "connection.voice_key_mode.microphone_only_help" : "connection.voice_key_mode.help")
                 .font(.system(size: 12))

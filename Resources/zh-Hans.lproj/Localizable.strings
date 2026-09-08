@@ -937,3 +937,6 @@
 "connection.voice_key.mode.microphone_only" = "仅麦克风";
 "connection.voice_key_mode.microphone_only_help" = "按住语音键使用麦克风，松开结束。请在录音软件中选择虚拟麦克风，并自行开始录音。";
 "voice_button.status.microphone_only_enabled" = "仅麦克风已就绪，语音键只传输音频";
+
+"connection.voice_key_mode.pending" = "当前仍为“%@”；本次收音和麦克风恢复结束后切换为“%@”。";
+"connection.voice_key_mode.change_failed" = "模式切换未完成，请确认当前选项并检查权限后重试。";

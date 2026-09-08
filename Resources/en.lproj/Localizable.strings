@@ -937,3 +937,6 @@
 "connection.voice_key.mode.microphone_only" = "Mic only";
 "connection.voice_key_mode.microphone_only_help" = "Hold the voice button to use the microphone. Release to finish. Select the virtual microphone and start recording in the receiving app.";
 "voice_button.status.microphone_only_enabled" = "Microphone only is ready; no keyboard trigger is sent";
+
+"connection.voice_key_mode.pending" = "Still using %@. Will switch to %@ after this session and microphone restoration finish.";
+"connection.voice_key_mode.change_failed" = "Mode change did not complete. Check the current selection and permissions, then retry.";

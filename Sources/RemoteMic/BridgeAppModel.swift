@@ -421,6 +421,38 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
     private weak var sourceMicrophoneBridge: XiaomiBluetoothBridge?
     private var sourceMicrophoneRemoteStopped = false
     private var pendingSourceMicrophoneSetting: Bool?
+    private let voiceKeyModeBusyOverride: (() -> Bool)?
+    @Published private(set) var pendingVoiceKeyMode: VoiceKeyMode?
+    @Published private(set) var voiceKeyModeChangeFailed = false
+    private lazy var voiceKeyModeChange = VoiceKeyModeChangeController(environment: .init(
+        current: { [weak self] in self?.settings.voiceKeyMode ?? .function },
+        isBusy: { [weak self] in
+            guard let self else { return true }
+            if let override = self.voiceKeyModeBusyOverride { return override() }
+            return self.isStreaming || self.sourceMicrophoneSession.isBusy || self.sourceMicrophoneSession.hasPendingVoice
+        },
+        prepare: { [weak self] completion in
+            guard let self, self.releaseVoiceKeyIfNeeded() else { completion(false); return }
+            self.preferredInputSourceMonitor.endVoiceSession()
+            self.voiceFnTapSession.setEnabled(false) { [weak self] in
+                guard let self else { completion(false); return }
+                completion(!self.voiceFnTapSession.requiresCleanupBeforeMapping)
+            }
+        },
+        apply: { [weak self] mode in
+            guard let self else { return false }
+            guard !self.settings.sourceMicrophoneSwitchingEnabled || mode.supportsSourceMicrophoneSwitching else { return false }
+            if mode != .function { self.settings.voiceFnTapModeEnabled = false }
+            self.settings.voiceKeyMode = mode
+            self.applyHIDSettings()
+            return self.settings.voiceKeyMode == mode
+        },
+        changed: { [weak self] pending, failed in
+            self?.pendingVoiceKeyMode = pending
+            self?.voiceKeyModeChangeFailed = failed
+        },
+        log: { AppLogger.shared.write("VOICE MODE_CHANGE " + $0) }
+    ))
     private var sourceMicrophoneModeEnabled: Bool {
         settings.sourceMicrophoneSwitchingEnabled && settings.voiceKeyMode.supportsSourceMicrophoneSwitching
     }
@@ -674,8 +706,10 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
             ProcessInfo.processInfo.arguments.contains("--rc003-voice-extension-test") ||
             (Bundle.main.object(forInfoDictionaryKey: "RC003VoiceExtensionTestEnabled") as? Bool == true),
         recordingAssetStore: RecordingAssetStore = RecordingAssetStore(),
-        macShortcuts: MacShortcutsService = MacShortcutsService()
+        macShortcuts: MacShortcutsService = MacShortcutsService(),
+        voiceKeyModeBusyOverride: (() -> Bool)? = nil
     ) {
+        self.voiceKeyModeBusyOverride = voiceKeyModeBusyOverride
         self.settings = settings
         self.privateFeature = privateFeature
         self.macroFeature = macroFeature
@@ -977,6 +1011,7 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
     }
 
     func stop() {
+        voiceKeyModeChange.cancel()
         sourceMicrophoneSession.shutdown()
         sourceMicrophoneFnMonitor.stop()
         privateFeature.stop()
@@ -2465,6 +2500,7 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
             )
             throw AppConfigurationError.unsafeVoiceKeyChange
         }
+        voiceKeyModeChange.cancel()
         if changedVoiceKeyConfiguration {
             preferredInputSourceMonitor.endVoiceSession()
         }
@@ -2473,44 +2509,8 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
     }
 
     func setVoiceKeyMode(_ mode: VoiceKeyMode) {
-        guard mode != settings.voiceKeyMode else { return }
         guard !settings.sourceMicrophoneSwitchingEnabled || mode.supportsSourceMicrophoneSwitching else { return }
-        let previousMode = settings.voiceKeyMode.rawValue
-        AppLogger.shared.write(
-            "VOICE KEY mode_change requested from=\(previousMode) to=\(mode.rawValue)"
-        )
-        guard !isStreaming else {
-            AppLogger.shared.write(
-                "VOICE KEY mode_change_rejected reason=voice_active requested=\(mode.rawValue)"
-            )
-            return
-        }
-
-        guard releaseVoiceKeyIfNeeded() else {
-            AppLogger.shared.write(
-                "VOICE KEY mode_change_rejected reason=release_failed requested=\(mode.rawValue)"
-            )
-            return
-        }
-        preferredInputSourceMonitor.endVoiceSession()
-        if mode != .function {
-            settings.voiceFnTapModeEnabled = false
-            voiceFnTapSession.setEnabled(false) { [weak self] in
-                guard let self else { return }
-                self.settings.voiceKeyMode = mode
-                self.applyHIDSettings()
-                AppLogger.shared.write(
-                    "VOICE KEY mode_change completed from=\(previousMode) to=\(mode.rawValue) result=applied"
-                )
-            }
-            return
-        }
-
-        settings.voiceKeyMode = .function
-        applyHIDSettings()
-        AppLogger.shared.write(
-            "VOICE KEY mode_change completed from=\(previousMode) to=fn result=applied"
-        )
+        voiceKeyModeChange.request(mode)
     }
 
     private func enableVoiceFnTapMode() {
@@ -5099,6 +5099,7 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
         if sessionID != nil {
             recordingAssetCoordinator.finish(endedAt: endedAt)
         }
+        voiceKeyModeChange.applyWhenIdle()
     }
 
     private var currentVoiceUsageSource: UsageEventSource {

@@ -27,6 +27,7 @@ private final class MicrophoneHarness {
     var audio: [Int16] = []
     var events: [String] = []
     var results: [String] = []
+    var onFinished: (() -> Void)?
     var logs: [String] = []
     var selectionFails = Set<String>()
     var deferSelection = false
@@ -107,7 +108,7 @@ private final class MicrophoneHarness {
             return { timer.cancelled = true }
         },
         log: { self.logs.append($0) },
-        finished: { self.results.append($0) }
+        finished: { self.results.append($0); self.onFinished?() }
     ))
 
     @discardableResult
@@ -136,6 +137,43 @@ private final class MicrophoneHarness {
 }
 
 struct SourceMicrophoneSessionTests {
+    @Test func modeRequestDuringRestoreChangesOnlyTheNextVoice() {
+        let h = MicrophoneHarness()
+        h.restoration = .init(delay: 2)
+        var mode = VoiceKeyMode.microphoneOnly
+        let selection = VoiceKeyModeChangeController(environment: .init(
+            current: { mode },
+            isBusy: { h.controller.isBusy || h.controller.hasPendingVoice },
+            prepare: { $0(true) }, apply: { mode = $0; return true },
+            changed: { _, _ in }, log: { _ in }
+        ))
+        h.onFinished = { selection.applyWhenIdle() }
+        h.start(mode: .microphoneOnly)
+        h.controller.receive([1, 2], device: h.remote)
+        h.controller.stop(device: h.remote)
+        h.completePlayback()
+        selection.request(.function)
+        #expect(mode == .microphoneOnly)
+        #expect(selection.pending == .function)
+        h.advance(1.8)
+        #expect(h.controller.phase == .cooldown)
+        #expect(mode == .microphoneOnly)
+        #expect(h.fn.isEmpty)
+        h.advance(0.3)
+        #expect(mode == .function)
+        #expect(h.results == ["completed"])
+        h.start(mode: mode == .function ? .hold : .microphoneOnly)
+        h.controller.receive([3, 4], device: h.remote)
+        #expect(h.fn == [true])
+        h.controller.stop(device: h.remote)
+        h.completePlayback()
+        h.advance(2.1)
+        #expect(h.fn == [true, false])
+        #expect(h.audio == [1, 2, 3, 4])
+        #expect(h.interrupted == 0)
+        #expect(h.results == ["completed", "completed"])
+    }
+
     @Test func microphoneOnlyQueuesSecondHoldAndNeverInjectsKeysOnShutdown() {
         let h = MicrophoneHarness()
         h.start(mode: .microphoneOnly)

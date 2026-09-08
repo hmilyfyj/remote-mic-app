@@ -117,7 +117,12 @@ enum SettingsScreenshotRenderer {
         } else {
             shortcutService = MacShortcutsService()
         }
-        let model = BridgeAppModel(settings: settings, initialAudioInputDevices: inputDevices, macShortcuts: shortcutService)
+        let pendingModeFixture = ProcessInfo.processInfo.environment["REMOTE_MIC_SETTINGS_SCREENSHOT_PENDING_VOICE_MODE"]
+            .flatMap(VoiceKeyMode.init(rawValue:))
+        let model = BridgeAppModel(settings: settings, initialAudioInputDevices: inputDevices,
+                                   macShortcuts: shortcutService,
+                                   voiceKeyModeBusyOverride: pendingModeFixture == nil ? nil : { true })
+        if let pendingModeFixture { model.setVoiceKeyMode(pendingModeFixture) }
         let updateInformation = UpdateInformationStore()
         let localization = LocalizationStore(settings: settings)
         model.privateFeature.updateLocaleIdentifier(localization.locale.identifier)
