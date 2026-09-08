@@ -1,5 +1,8 @@
 # TODO
 
+- [ ] 验收首次按住语音的路由就绪超时修复
+  - 2026-09-08：输出等待上限改为 2.5 秒，健康快速路径与 PCM 顺序保持；失败回放及自动化通过，真实遥控器与输入法验收见 `Testing/SourceMicrophoneSwitching.md` Q01–Q06。
+
 - [x] 接入 Trellis 开发流程
   - 2026-09-08：安装官方 0.6.16 Codex 工具与 Swift/macOS spec，入口见 `TRELLIS.md`。任务、身份与日志保持本地，自动提交关闭；任务生命周期、hooks、配置和仓库边界检查已通过。
 

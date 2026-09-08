@@ -36,6 +36,7 @@ private final class MicrophoneHarness {
     var recoveryWriteFails = false
     var waitForDestination = false
     var destination: ((Bool) -> Void)?
+    var routeReadyDelay: TimeInterval?
     var waitForOutput = false
     var outputReady: ((Bool) -> Void)?
     var restoration = SourceMicrophoneSessionController.Restoration()
@@ -84,6 +85,16 @@ private final class MicrophoneHarness {
             return {}
         },
         waitForOutput: { completion in
+            if let delay = self.routeReadyDelay {
+                let readyAt = self.now + delay
+                return AudioRouteWaiter.wait(environment: .init(
+                    now: { self.now }, unavailableReason: { nil },
+                    healthy: { self.now >= readyAt }, restart: { true },
+                    schedule: { delay, action in
+                        self.timers.append(Timer(deadline: self.now + delay, action: action))
+                    }, log: { self.logs.append($0) }
+                ), completion: completion)
+            }
             self.outputReady = completion
             if !self.waitForOutput { completion(true) }
             return {}
@@ -125,6 +136,36 @@ private final class MicrophoneHarness {
 }
 
 struct SourceMicrophoneSessionTests {
+    @Test func slowRouteStartsFirstHoldAndPreservesBothSessions() {
+        let h = MicrophoneHarness()
+        h.routeReadyDelay = 1.2
+        h.start()
+        h.controller.receive([1, 2, 3], device: h.remote)
+        h.advance(1.6)
+        #expect(h.controller.phase == .active)
+        #expect(h.fn == [true])
+        #expect(h.audio == [1, 2, 3])
+        h.controller.receive([4, 5], device: h.remote)
+        h.controller.stop(device: h.remote)
+        h.completePlayback()
+        h.advance(1.6)
+        #expect(h.results == ["completed"])
+        #expect(h.fn == [true, false])
+        #expect(h.input == "built_in")
+        #expect(h.interrupted == 0)
+        h.routeReadyDelay = 0
+        h.start()
+        h.controller.receive([6, 7], device: h.remote)
+        h.controller.stop(device: h.remote)
+        h.advance(0.2)
+        h.completePlayback()
+        h.advance(0.2)
+        #expect(h.results == ["completed", "completed"])
+        #expect(h.fn == [true, false, true, false])
+        #expect(h.audio == [1, 2, 3, 4, 5, 6, 7])
+        #expect(h.interrupted == 0)
+    }
+
     @Test func completedLongVoiceReceivesFullRestoreDelay() {
         let h = MicrophoneHarness()
         h.restoration = .init(delay: 10)
