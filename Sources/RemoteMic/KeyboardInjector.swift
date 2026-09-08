@@ -197,16 +197,18 @@ enum KeyboardInjector {
         accessibilityTrusted: () -> Bool = { isAccessibilityTrusted },
         keyStatePoster: KeyStatePoster = postKeyState
     ) -> Bool {
+        guard let keyCode = mode.keyCode else { return true }
         guard accessibilityTrusted() else { return false }
         let flags: CGEventFlags
         switch mode {
+        case .microphoneOnly: return true
         case .function:
             flags = isPressed ? .maskSecondaryFn : []
         case .leftCommand, .rightCommand:
             flags = isPressed ? .maskCommand : []
         }
         return keyStatePoster(
-            mode.keyCode,
+            keyCode,
             isPressed,
             flags
         )
@@ -368,7 +370,7 @@ enum KeyboardInjector {
             break
         case .openCustomApplication, .runMacShortcut:
             break
-        case .toggleLongRecording:
+        case .toggleLongRecording, .toggleVoiceMode, .useMicrophoneOnly, .useFnVoiceInput:
             break
         case .openRemoteMic, .openCodex, .openClaude, .openCmux, .openWeChat, .openCursor, .openXcode,
              .openSlack, .openWeCom, .openNeteaseMusic, .openChrome, .openSafari, .openZed:

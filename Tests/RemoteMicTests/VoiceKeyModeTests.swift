@@ -5,6 +5,24 @@ import Testing
 
 @Suite("Voice key modes")
 struct VoiceKeyModeTests {
+    @Test func microphoneOnlyHasNoKeyAndNeverCallsEventPosterOrPermissionCheck() {
+        #expect(VoiceKeyMode.microphoneOnly.keyCode == nil)
+        #expect(!VoiceKeyMode.microphoneOnly.requiresAccessibility)
+        #expect(!VoiceKeyMode.microphoneOnly.usesHardwareMapping)
+        #expect(VoiceKeyMode.microphoneOnly.supportsSourceMicrophoneSwitching)
+        var permissionChecks = 0
+        var posts = 0
+        for down in [true, false] {
+            #expect(KeyboardInjector.setVoiceKeyPressed(.microphoneOnly, isPressed: down,
+                accessibilityTrusted: { permissionChecks += 1; return false },
+                keyStatePoster: { _, _, _ in posts += 1; return false }))
+        }
+        #expect(permissionChecks == 0)
+        #expect(posts == 0)
+        #expect(!BridgeAppModel.canStartBluetoothVoice(mode: .microphoneOnly, isVoiceKeyNeutralized: false))
+        #expect(BridgeAppModel.canStartBluetoothVoice(mode: .microphoneOnly, isVoiceKeyNeutralized: true))
+    }
+
     @Test func keepsFnAsTheLegacyDefaultAndUsesDistinctCommandCodes() {
         #expect(VoiceKeyMode(rawValue: "") == nil)
         #expect(VoiceKeyMode.function.rawValue == "fn")
@@ -393,25 +411,27 @@ struct VoiceKeyModeTests {
         #expect(!monitor.functionKeyIsPressedForDiagnostics)
     }
 
-    @Test func configurationDefaultsLegacyAndRoundTripsCommandMode() throws {
+    @Test(arguments: [VoiceKeyMode.rightCommand, .microphoneOnly])
+    func configurationDefaultsLegacyAndRoundTripsCommandMode(mode: VoiceKeyMode) throws {
         let sourceSuite = "RemoteMicTests.voice-key-source.\(UUID().uuidString)"
         let sourceDefaults = try #require(UserDefaults(suiteName: sourceSuite))
         defer { sourceDefaults.removePersistentDomain(forName: sourceSuite) }
         let source = AppSettings(defaults: sourceDefaults)
         #expect(source.voiceKeyMode == .function)
-        source.voiceKeyMode = .rightCommand
+        source.voiceKeyMode = mode
         source.voiceFnTapModeEnabled = true
+        #expect(AppSettings(defaults: sourceDefaults).voiceKeyMode == mode)
         let exported = try source.exportedConfigurationData()
 
         let object = try #require(JSONSerialization.jsonObject(with: exported) as? [String: Any])
-        #expect(object["voiceKeyMode"] as? String == VoiceKeyMode.rightCommand.rawValue)
+        #expect(object["voiceKeyMode"] as? String == mode.rawValue)
 
         let targetSuite = "RemoteMicTests.voice-key-target.\(UUID().uuidString)"
         let targetDefaults = try #require(UserDefaults(suiteName: targetSuite))
         defer { targetDefaults.removePersistentDomain(forName: targetSuite) }
         let target = AppSettings(defaults: targetDefaults)
         try target.importConfiguration(from: exported)
-        #expect(target.voiceKeyMode == .rightCommand)
+        #expect(target.voiceKeyMode == mode)
         #expect(!target.voiceFnTapModeEnabled)
 
         var legacy = object
