@@ -4346,7 +4346,12 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
     }
 
     @discardableResult
-    private func performInternalAction(_ action: ButtonAction) -> Bool {
+    func performInternalAction(_ action: ButtonAction) -> Bool {
+        if let mode = action.voiceKeyModeTarget(current: settings.voiceKeyMode, pending: pendingVoiceKeyMode) {
+            AppLogger.shared.write("VOICE MODE_ACTION phase=requested action=\(action.rawValue) target=\(mode.rawValue)")
+            setVoiceKeyMode(mode)
+            return true
+        }
         guard action == .toggleLongRecording else { return false }
         guard action.isEnabled(
             experimentalContinuousRecordingEnabled: settings.experimentalContinuousRecordingEnabled

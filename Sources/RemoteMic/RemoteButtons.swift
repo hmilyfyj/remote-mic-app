@@ -439,6 +439,7 @@ enum PresetApplication: String, CaseIterable, Identifiable {
 }
 
 enum ButtonActionCategory: String, CaseIterable, Identifiable {
+    case voiceModes
     case basicKeys
     case systemAndMedia
     case custom
@@ -448,6 +449,7 @@ enum ButtonActionCategory: String, CaseIterable, Identifiable {
 
     var localizationKey: String {
         switch self {
+        case .voiceModes: return "button_mapping.action_group.voice_modes"
         case .basicKeys: return "button_mapping.action_group.basic_keys"
         case .systemAndMedia: return "button_mapping.action_group.system_and_media"
         case .custom: return "button_mapping.action_group.custom"
@@ -493,6 +495,9 @@ enum ButtonAction: String, CaseIterable, Codable, Identifiable {
     case focusInput
     case openCustomApplication
     case runMacShortcut
+    case toggleVoiceMode
+    case useMicrophoneOnly
+    case useFnVoiceInput
     case toggleLongRecording
     case openRemoteMic
     case openCodex
@@ -548,6 +553,9 @@ enum ButtonAction: String, CaseIterable, Codable, Identifiable {
         case .focusInput: return localization.text("action.focus_input")
         case .openCustomApplication: return localization.text("action.open_custom_application")
         case .runMacShortcut: return localization.text("action.run_mac_shortcut")
+        case .toggleVoiceMode: return localization.text("action.toggle_voice_mode")
+        case .useMicrophoneOnly: return localization.text("action.use_microphone_only")
+        case .useFnVoiceInput: return localization.text("action.use_fn_voice_input")
         case .toggleLongRecording: return localization.text("action.toggle_long_recording")
         case .openRemoteMic: return localization.text("action.open_remote_mic")
         case .openCodex: return localization.text("action.open_codex")
@@ -587,6 +595,7 @@ enum ButtonAction: String, CaseIterable, Codable, Identifiable {
     var category: ButtonActionCategory {
         if presetApplication != nil { return .applications }
         switch self {
+        case .toggleVoiceMode, .useMicrophoneOnly, .useFnVoiceInput: return .voiceModes
         case .disabled, .escape, .returnKey, .commandReturn, .shiftReturn, .commandCopy,
              .commandPaste, .commandClose, .commandQuit, .commandCut, .commandSelectAll,
              .commandUndo, .commandRedo, .commandFind, .commandSave, .commandDelete,
@@ -629,8 +638,20 @@ enum ButtonAction: String, CaseIterable, Codable, Identifiable {
         ].contains(self) && presetApplication == nil && !isAppInternal
     }
 
+    var isVoiceModeAction: Bool { category == .voiceModes }
+
+    func voiceKeyModeTarget(current: VoiceKeyMode, pending: VoiceKeyMode?) -> VoiceKeyMode? {
+        switch self {
+        case .toggleVoiceMode:
+            return (pending ?? current) == .microphoneOnly ? .function : .microphoneOnly
+        case .useMicrophoneOnly: return .microphoneOnly
+        case .useFnVoiceInput: return .function
+        default: return nil
+        }
+    }
+
     var isAppInternal: Bool {
-        self == .toggleLongRecording
+        self == .toggleLongRecording || isVoiceModeAction
     }
 
     func isEnabled(experimentalContinuousRecordingEnabled: Bool) -> Bool {

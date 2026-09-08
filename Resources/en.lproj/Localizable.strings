@@ -940,3 +940,9 @@
 
 "connection.voice_key_mode.pending" = "Still using %@. Will switch to %@ after this session and microphone restoration finish.";
 "connection.voice_key_mode.change_failed" = "Mode change did not complete. Check the current selection and permissions, then retry.";
+
+"action.toggle_voice_mode" = "Toggle voice mode";
+"action.use_microphone_only" = "Use microphone only";
+"action.use_fn_voice_input" = "Use Fn voice input";
+"button_mapping.action_group.voice_modes" = "Voice modes";
+"button_mapping.voice_mode_actions.help" = "Choose how the voice button works, then hold it to speak. Changes during recording or restoration apply after the session ends.";

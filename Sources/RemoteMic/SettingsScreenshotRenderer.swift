@@ -75,6 +75,11 @@ enum SettingsScreenshotRenderer {
             settings.customMappingEnabled = true
             settings.voiceKeyMode = mode
         }
+        let modeActionFixture = ProcessInfo.processInfo.environment["REMOTE_MIC_SETTINGS_SCREENSHOT_VOICE_MODE_ACTIONS"] == "1"
+        if modeActionFixture {
+            settings.customMappingEnabled = true
+            settings.setAction(.toggleVoiceMode, for: .menu, trigger: .singleClick)
+        }
         var inputDevices: [AudioDeviceInfo] = []
         if let restorationFixture {
             settings.customMappingEnabled = true
@@ -134,7 +139,7 @@ enum SettingsScreenshotRenderer {
         NSApp.appearance = appearance
         defer { NSApp.appearance = previousAppearance }
 
-        for section in restorationFixture == nil && macShortcutFixture == nil && voiceKeyFixture == nil ? sections : [.mapping] {
+        for section in restorationFixture == nil && macShortcutFixture == nil && voiceKeyFixture == nil && !modeActionFixture ? sections : [.mapping] {
             let rootView = SettingsView(
                 model: model,
                 updateInformation: updateInformation,
@@ -142,9 +147,9 @@ enum SettingsScreenshotRenderer {
                 initialShareSection: section == .statistics || section == .about
                     ? section
                     : nil,
-                initialMappingEditingButton: section == .mapping && (opensShortcutEditor || macShortcutFixture != nil)
+                initialMappingEditingButton: modeActionFixture ? .menu : (section == .mapping && (opensShortcutEditor || macShortcutFixture != nil)
                     ? .ok
-                    : nil,
+                    : nil),
                 initialShortcutPickerShowsKeyboard: showsStandardKeyboard,
                 initialMappingShowsVoiceSettings: restorationFixture != nil || voiceKeyFixture != nil,
                 minimumContentSize: .zero

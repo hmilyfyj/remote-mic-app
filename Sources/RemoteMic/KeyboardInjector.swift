@@ -370,7 +370,7 @@ enum KeyboardInjector {
             break
         case .openCustomApplication, .runMacShortcut:
             break
-        case .toggleLongRecording:
+        case .toggleLongRecording, .toggleVoiceMode, .useMicrophoneOnly, .useFnVoiceInput:
             break
         case .openRemoteMic, .openCodex, .openClaude, .openCmux, .openWeChat, .openCursor, .openXcode,
              .openSlack, .openWeCom, .openNeteaseMusic, .openChrome, .openSafari, .openZed:

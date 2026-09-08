@@ -1843,6 +1843,12 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text(localization.text(category.localizationKey))
                     .font(.system(size: 14, weight: .semibold))
+                if category == .voiceModes {
+                    Text("button_mapping.voice_mode_actions.help")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
 
                 mappingActionGrid(
                     actions: actions,
@@ -1887,7 +1893,7 @@ struct SettingsView: View {
                                         ? localization.text("common.suffix.experimental_disabled")
                                         : "")
                         )
-                        .lineLimit(action == .runMacShortcut ? 2 : 1)
+                        .lineLimit(action == .runMacShortcut || action.isVoiceModeAction ? 2 : 1)
                         .truncationMode(.tail)
                         Spacer(minLength: 0)
                     }
@@ -2452,6 +2458,9 @@ struct SettingsView: View {
         case .appSwitcher: return "command"
         case .volumeUp, .volumeDown, .volumeMute: return "speaker.wave.2"
         case .playPause, .previousCommandLeft, .nextCommandRight: return "play.circle"
+        case .toggleVoiceMode: return "arrow.triangle.2.circlepath"
+        case .useMicrophoneOnly: return "mic"
+        case .useFnVoiceInput: return "waveform"
         case .toggleLongRecording: return "record.circle"
         default: return "keyboard"
         }

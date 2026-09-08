@@ -940,3 +940,9 @@
 
 "connection.voice_key_mode.pending" = "当前仍为“%@”；本次收音和麦克风恢复结束后切换为“%@”。";
 "connection.voice_key_mode.change_failed" = "模式切换未完成，请确认当前选项并检查权限后重试。";
+
+"action.toggle_voice_mode" = "切换语音模式";
+"action.use_microphone_only" = "使用仅麦克风";
+"action.use_fn_voice_input" = "使用 Fn 语音输入";
+"button_mapping.action_group.voice_modes" = "语音模式";
+"button_mapping.voice_mode_actions.help" = "选择语音键的工作方式，再按住语音键收音。收音或恢复期间的选择会在会话结束后生效。";
