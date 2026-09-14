@@ -1,6 +1,6 @@
 ---
 name: trellis-start
-description: "Initializes an AI development session by reading workflow guides, developer identity, git status, active tasks, and project guidelines from .trellis/. Classifies incoming tasks and routes to brainstorm, direct edit, or task workflow. Use when beginning a new coding session, resuming work, starting a new task, or re-establishing project context."
+description: "开始或恢复 Trellis 开发任务时获取必要上下文并分流；纯问答不触发。"
 ---
 
 # Start Session
@@ -47,7 +47,7 @@ From Step 1 you know the current task and status. Check the task directory:
   ```bash
   python3 ./.trellis/scripts/get_context.py --mode phase --step 2.1 --platform codex
   ```
-- **No active task** → classify first. For simple conversation / small task, ask only whether this turn should create a Trellis task. For complex work, ask whether you may create a Trellis task and enter planning. If the user says no, skip Trellis for this session.
+- **No active task** → read-only conversation needs no task. An implementation request authorizes creating/reusing a task and necessary planning. Complete the required artifacts and continue without another permission question; respect explicit planning-only requests.
 
 ---
 

@@ -1,6 +1,6 @@
 ---
 name: trellis-finish-work
-description: "Wrap up the current session: verify quality gate passed, remind user to commit, archive completed tasks, and record session progress to the developer journal. Use when done coding and ready to end the session."
+description: "任务完成条件满足后，归档 Trellis 任务并记录会话。"
 ---
 
 # Finish Work
@@ -19,7 +19,7 @@ This prints:
 - **Git status** — quick visual on what's dirty.
 - **Recent commits** — you'll need their hashes in Step 4 for `--commit`.
 
-If `--mode record` surfaces other completed tasks not tied to the current session, surface them to the user with a one-shot confirmation: "These N tasks look done — archive them too in this round? [y/N]". Default is no; the current active task is always archived in Step 3 regardless.
+If `--mode record` surfaces other completed tasks not tied to the current session, surface them to the user with a one-shot confirmation: "These N tasks look done — archive them too in this round? [y/N]". Default is no; the current task is archived in Step 3 only when its completion and delivery criteria are met.
 
 ## Step 2: Sanity check — classify dirty paths
 
@@ -53,7 +53,7 @@ Then route:
 python3 ./.trellis/scripts/task.py archive <task-name>
 ```
 
-At minimum: the current active task (if any). Plus any extra tasks the user confirmed in Step 1. Each archive produces a `chore(task): archive ...` commit via the script's auto-commit.
+Archive the current active task only if its acceptance and delivery criteria are complete; an unfinished active task remains active. Plus any extra tasks the user confirmed in Step 1. Each archive produces a `chore(task): archive ...` commit via the script's auto-commit.
 
 If there is no active task and the user did not confirm any cleanup archives, skip this step.
 
