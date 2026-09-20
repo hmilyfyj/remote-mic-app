@@ -6,14 +6,16 @@ import Foundation
 /// limited to the two physical sides so a user can choose a rare, dedicated
 /// trigger without turning the voice key into an arbitrary shortcut recorder.
 enum VoiceKeyMode: String, Codable, CaseIterable, Identifiable {
+    case microphoneOnly = "microphone_only"
     case function = "fn"
     case leftCommand = "left_command"
     case rightCommand = "right_command"
 
     var id: String { rawValue }
 
-    var keyCode: UInt16 {
+    var keyCode: UInt16? {
         switch self {
+        case .microphoneOnly: return nil
         case .function: return 63
         case .leftCommand: return 55
         case .rightCommand: return 54
@@ -21,11 +23,15 @@ enum VoiceKeyMode: String, Codable, CaseIterable, Identifiable {
     }
 
     var requiresAccessibility: Bool {
-        self != .function
+        self == .leftCommand || self == .rightCommand
     }
 
     var usesHardwareMapping: Bool {
         self == .function
+    }
+
+    var supportsSourceMicrophoneSwitching: Bool {
+        self == .function || self == .microphoneOnly
     }
 
     var localizationKey: String {

@@ -6,3 +6,5 @@
 - `Tests/RemoteMicTests/`：宿主测试；`Testing/`：功能实测手册；`scripts/`：构建与验证。
 
 新增文件先读 [FILE_NAMING.md](../../../FILE_NAMING.md)，优先扩展已有职责对应模块。
+
+模式控制类普通按键动作通过 ButtonAction.isAppInternal 和宿主 performInternalAction 派发；以 pending ?? current 解析切换目标并复用 setVoiceKeyMode，保护等待中的最新选择。语音键保持独立生命周期，新动作不新增语音键手势。

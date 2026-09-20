@@ -1353,22 +1353,37 @@ struct SettingsView: View {
             Text("connection.voice_key_mode.title")
                 .font(.system(size: 12, weight: .medium))
             Picker("connection.voice_key_mode.title", selection: Binding(
-                get: { settings.voiceKeyMode },
+                get: { model.pendingVoiceKeyMode ?? settings.voiceKeyMode },
                 set: { model.setVoiceKeyMode($0) }
             )) {
                 ForEach(VoiceKeyMode.allCases) { mode in
                     Text(LocalizedStringKey(mode.localizationKey)).tag(mode)
+                        .disabled(settings.sourceMicrophoneSwitchingEnabled && !mode.supportsSourceMicrophoneSwitching)
                 }
             }
             .pickerStyle(.segmented)
             .labelsHidden()
             .controlSize(.small)
-            .disabled(settings.sourceMicrophoneSwitchingEnabled)
-            Text("connection.voice_key_mode.help")
+            if let pendingMode = model.pendingVoiceKeyMode {
+                Text(LocalizedMessage("connection.voice_key_mode.pending", arguments: [
+                    localization.text(settings.voiceKeyMode.localizationKey),
+                    localization.text(pendingMode.localizationKey)
+                ]).text(using: localization))
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.orange)
+                .fixedSize(horizontal: false, vertical: true)
+            } else if model.voiceKeyModeChangeFailed {
+                Text("connection.voice_key_mode.change_failed")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Text(settings.voiceKeyMode == .microphoneOnly
+                 ? "connection.voice_key_mode.microphone_only_help" : "connection.voice_key_mode.help")
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)
                 .lineLimit(3)
-            if settings.voiceKeyMode != .function {
+            if settings.voiceKeyMode.requiresAccessibility {
                 Label {
                     Text("connection.voice_key_mode.unverified")
                         .font(.system(size: 12, weight: .medium))
@@ -1413,7 +1428,7 @@ struct SettingsView: View {
             ))
             .font(.system(size: 12, weight: .medium))
             .toggleStyle(.switch)
-            .disabled(settings.voiceKeyMode != .function)
+            .disabled(!settings.voiceKeyMode.supportsSourceMicrophoneSwitching)
             Text("audio.source_switch.impact")
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)
@@ -1828,6 +1843,12 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text(localization.text(category.localizationKey))
                     .font(.system(size: 14, weight: .semibold))
+                if category == .voiceModes {
+                    Text("button_mapping.voice_mode_actions.help")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
 
                 mappingActionGrid(
                     actions: actions,
@@ -1872,7 +1893,7 @@ struct SettingsView: View {
                                         ? localization.text("common.suffix.experimental_disabled")
                                         : "")
                         )
-                        .lineLimit(action == .runMacShortcut ? 2 : 1)
+                        .lineLimit(action == .runMacShortcut || action.isVoiceModeAction ? 2 : 1)
                         .truncationMode(.tail)
                         Spacer(minLength: 0)
                     }
@@ -2437,6 +2458,9 @@ struct SettingsView: View {
         case .appSwitcher: return "command"
         case .volumeUp, .volumeDown, .volumeMute: return "speaker.wave.2"
         case .playPause, .previousCommandLeft, .nextCommandRight: return "play.circle"
+        case .toggleVoiceMode: return "arrow.triangle.2.circlepath"
+        case .useMicrophoneOnly: return "mic"
+        case .useFnVoiceInput: return "waveform"
         case .toggleLongRecording: return "record.circle"
         default: return "keyboard"
         }

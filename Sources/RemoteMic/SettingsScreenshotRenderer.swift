@@ -70,6 +70,16 @@ enum SettingsScreenshotRenderer {
         let restorationFixture = ProcessInfo.processInfo.environment[
             "REMOTE_MIC_SETTINGS_SCREENSHOT_MICROPHONE_RESTORE"
         ]
+        let voiceKeyFixture = ProcessInfo.processInfo.environment["REMOTE_MIC_SETTINGS_SCREENSHOT_VOICE_MODE"]
+        if let voiceKeyFixture, let mode = VoiceKeyMode(rawValue: voiceKeyFixture) {
+            settings.customMappingEnabled = true
+            settings.voiceKeyMode = mode
+        }
+        let modeActionFixture = ProcessInfo.processInfo.environment["REMOTE_MIC_SETTINGS_SCREENSHOT_VOICE_MODE_ACTIONS"] == "1"
+        if modeActionFixture {
+            settings.customMappingEnabled = true
+            settings.setAction(.toggleVoiceMode, for: .menu, trigger: .singleClick)
+        }
         var inputDevices: [AudioDeviceInfo] = []
         if let restorationFixture {
             settings.customMappingEnabled = true
@@ -112,7 +122,12 @@ enum SettingsScreenshotRenderer {
         } else {
             shortcutService = MacShortcutsService()
         }
-        let model = BridgeAppModel(settings: settings, initialAudioInputDevices: inputDevices, macShortcuts: shortcutService)
+        let pendingModeFixture = ProcessInfo.processInfo.environment["REMOTE_MIC_SETTINGS_SCREENSHOT_PENDING_VOICE_MODE"]
+            .flatMap(VoiceKeyMode.init(rawValue:))
+        let model = BridgeAppModel(settings: settings, initialAudioInputDevices: inputDevices,
+                                   macShortcuts: shortcutService,
+                                   voiceKeyModeBusyOverride: pendingModeFixture == nil ? nil : { true })
+        if let pendingModeFixture { model.setVoiceKeyMode(pendingModeFixture) }
         let updateInformation = UpdateInformationStore()
         let localization = LocalizationStore(settings: settings)
         model.privateFeature.updateLocaleIdentifier(localization.locale.identifier)
@@ -124,7 +139,7 @@ enum SettingsScreenshotRenderer {
         NSApp.appearance = appearance
         defer { NSApp.appearance = previousAppearance }
 
-        for section in restorationFixture == nil && macShortcutFixture == nil ? sections : [.mapping] {
+        for section in restorationFixture == nil && macShortcutFixture == nil && voiceKeyFixture == nil && !modeActionFixture ? sections : [.mapping] {
             let rootView = SettingsView(
                 model: model,
                 updateInformation: updateInformation,
@@ -132,11 +147,11 @@ enum SettingsScreenshotRenderer {
                 initialShareSection: section == .statistics || section == .about
                     ? section
                     : nil,
-                initialMappingEditingButton: section == .mapping && (opensShortcutEditor || macShortcutFixture != nil)
+                initialMappingEditingButton: modeActionFixture ? .menu : (section == .mapping && (opensShortcutEditor || macShortcutFixture != nil)
                     ? .ok
-                    : nil,
+                    : nil),
                 initialShortcutPickerShowsKeyboard: showsStandardKeyboard,
-                initialMappingShowsVoiceSettings: restorationFixture != nil,
+                initialMappingShowsVoiceSettings: restorationFixture != nil || voiceKeyFixture != nil,
                 minimumContentSize: .zero
             )
             .environmentObject(localization)

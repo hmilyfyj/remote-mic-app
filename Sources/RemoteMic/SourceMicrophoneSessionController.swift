@@ -6,7 +6,7 @@ enum SourceMicrophoneRestoreMode: String, CaseIterable {
 
 /// Serialized on the main run loop, including injected callbacks and timers.
 final class SourceMicrophoneSessionController {
-    enum Mode { case hold, tap }
+    enum Mode: String { case hold, tap, microphoneOnly = "microphone_only" }
     enum Phase: String { case idle, switching, waiting, starting, active, draining, stopping, cooldown, restoring }
 
     struct Restoration {
@@ -151,7 +151,7 @@ final class SourceMicrophoneSessionController {
         deadline = startedAt + 1
         finalReason = "completed"
         phase = .switching
-        log("phase=requested source=remote mode=\(mode == .tap ? "tap" : "hold") restore_mode=\(restoration.preferredUID == nil ? "previous" : "specified") restore_delay_ms=\(Int(restoreDelay * 1000))")
+        log("phase=requested source=remote mode=\(mode.rawValue) restore_mode=\(restoration.preferredUID == nil ? "previous" : "specified") restore_delay_ms=\(Int(restoreDelay * 1000))")
         guard environment.writeRecovery(record) else {
             finalReason = "recovery_write_failed"
             finish()
@@ -298,6 +298,10 @@ final class SourceMicrophoneSessionController {
                 guard let self, self.generation == operation, self.phase == .waiting else { return }
                 guard ready else { self.cancel(reason: "output_not_ready"); return }
                 self.log("phase=output_ready elapsed_ms=\(self.elapsedMilliseconds)")
+                if self.mode == .microphoneOnly {
+                    self.startTool()
+                    return
+                }
                 let cancelDestination = self.environment.waitForDestination { [weak self] ready in
                     guard let self, self.generation == operation, self.phase == .waiting else { return }
                     guard ready else { self.cancel(reason: "destination_cancelled"); return }
@@ -321,6 +325,11 @@ final class SourceMicrophoneSessionController {
         inputChanged()
         guard phase == .waiting else { return }
         phase = .starting
+        if mode == .microphoneOnly {
+            log("phase=audio_only_started keyboard_trigger=none")
+            activate()
+            return
+        }
         guard environment.setFn(true) else { cancel(reason: "start_failed"); return }
         fnDown = true
         log("phase=trigger_submitted external_capture=unknown")

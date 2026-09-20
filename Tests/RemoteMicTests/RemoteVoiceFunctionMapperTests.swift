@@ -3,6 +3,20 @@ import Testing
 
 @Suite("RC003 hardware Fn mapping")
 struct RemoteVoiceFunctionMapperTests {
+    @Test func microphoneOnlyRequiresVerifiedHardwareSuppressionAndKeepsOtherKeys() {
+        let unrelated = HIDUsageMapping(source: 4, destination: 5)
+        let box = MappingServiceBox(registryID: 10, mappings: [unrelated])
+        let mapper = RemoteVoiceFunctionMapper { [box.service] }
+        #expect(mapper.apply(neutralizeVoiceKey: true, verifyVoiceKeyNeutralization: true))
+        #expect(BridgeAppModel.canStartBluetoothVoice(mode: .microphoneOnly, isVoiceKeyNeutralized: mapper.isVoiceKeyNeutralized))
+        #expect(box.mappings.contains(RemoteVoiceFunctionMappingPolicy.neutralRemoteVoiceKey))
+        #expect(box.mappings.contains(unrelated))
+        box.acceptsWrites = false
+        box.mappings = [unrelated, RemoteVoiceFunctionMappingPolicy.remoteVoiceKey]
+        #expect(!mapper.apply(neutralizeVoiceKey: true, verifyVoiceKeyNeutralization: true))
+        #expect(!BridgeAppModel.canStartBluetoothVoice(mode: .microphoneOnly, isVoiceKeyNeutralized: mapper.isVoiceKeyNeutralized))
+    }
+
     @Test func commandBluetoothStreamRequiresCompleteCurrentNeutralization() {
         let original = [HIDUsageMapping(source: 0x0000_0007_0000_0004, destination: 5)]
         let first = MappingServiceBox(registryID: 1, mappings: original)
